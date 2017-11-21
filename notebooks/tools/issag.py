@@ -9,21 +9,21 @@ import pandas as pd
 from scipy.stats import norm
 from collections import OrderedDict
 from astropy.io import fits
-from matchfn import matchfn
+from fnmatch import fnmatch
 
 
 def _random_range_(domain):
     return domain[0] + np.random.rand() * (domain[1] - domain[0])
 
 
-def _rejection_(pdf, domain, range, size=1, delta_y=1e-3):
+def _rejection_(pdf, domain, top, size=1):
     N = 0
     dev = []
     while N < size:
         rx = _random_range_(domain)
-        ry = _random_range_((range[0], range[1]+delta_y))
-        if ry < pdf(rx):
-            dev += [ry]
+        ru = np.random.rand()
+        if ru < pdf(rx)/top:
+            dev += [rx]
             N += 1
     if size == 1:
         return dev[0]
@@ -31,7 +31,7 @@ def _rejection_(pdf, domain, range, size=1, delta_y=1e-3):
         return dev
 
 
-class PDF(object):
+class Sampler(object):
 
     def __init__(self, domain_t_form=(1.5e9, 13.7e9),
                  domain_gamma=(0.0, 1.0),
@@ -46,6 +46,7 @@ class PDF(object):
                  domain_sigma_v=(50.0, 400.0)):
         self.domain_t_form = domain_t_form
         self.domain_gamma = domain_gamma
+        self.domain_t_trun = domain_t_trun
         self.log_domain_tau_trun = log_domain_tau_trun
         self.domain_t_burst = domain_t_burst
         self.domain_t_ext = domain_t_ext
@@ -71,6 +72,23 @@ class PDF(object):
         self.minimum_sample_size = 10000
         self.sample = None
 
+        self.truncated_swap_counter = 0
+
+    def _clean_draws_(self):
+        self.t_form = None
+        self.gamma = None
+        self.truncated = None
+        self.t_trun = None
+        self.tau_trun = None
+        self.t_burst = None
+        self.t_ext = None
+        self.A = None
+        self.Z = None
+        self.tau_V = None
+        self.mu_V = None
+        self.sigma_v = None
+        return None
+
     def draw_t_form(self):
         self.t_form = _random_range_(self.domain_t_form)
         return self.t_form
@@ -80,7 +98,20 @@ class PDF(object):
         return self.gamma
 
     def draw_truncated(self):
-        self.truncated = True if np.random.rand() <= 0.3 else False
+        if self.gamma is None:
+            self.draw_gamma()
+
+        self.truncated = True if np.random.rand() < 0.3 else False
+
+        if self.truncated and 1.0/self.gamma*1e9 < 10**self.log_domain_tau_trun[0]:
+            self.truncated_swap_counter += 1
+            self.truncated = False
+            return self.truncated
+        elif not self.truncated and self.truncated_swap_counter > 0:
+            self.truncated_swap_counter -= 1
+            self.truncated = True
+            return self.truncated
+
         return self.truncated
 
     def draw_t_trun(self):
@@ -101,22 +132,23 @@ class PDF(object):
         if self.truncated is False:
             self.tau_trun = np.nan
             return self.tau_trun
-        if not self.gamma:
+        if self.gamma is None:
             self.draw_gamma()
 
-        max_tau_trun = min(self.log_domain_tau_trun[1], log10(1.0/self.gamma))
-        self.tau_trun = 10**(_random_range_((self.log_domain_tau_trun[0],
-                                             max_tau_trun)))
+        max_tau_trun = min(10**self.log_domain_tau_trun[1], 1.0/self.gamma*1e9)
+        self.tau_trun = 10**_random_range_((self.log_domain_tau_trun[0],
+                                            np.log10(max_tau_trun)))
         return self.tau_trun
 
     def draw_t_burst(self):
-        if not self.t_form:
+        if self.t_form is None:
             self.draw_t_form()
 
         tol_t_burst = 0.10 if self.truncated else 0.15
-        max_t_burst = 2e9 if np.random.rand() <= tol_t_burst\
-            else self.domain_t_burst[1]
-        self.t_burst = _random_range_((self.domain_t_burst[0], max_t_burst))
+        domain_t_burst = (self.domain_t_burst[0], 2e9)\
+            if np.random.rand() <= tol_t_burst\
+            else (2e9, self.t_form)
+        self.t_burst = _random_range_(domain_t_burst)
         return self.t_burst
 
     def draw_t_ext(self):
@@ -129,34 +161,35 @@ class PDF(object):
         return self.t_ext
 
     def draw_A(self):
-        self.A = 10**_random_range_((log10(self.domain_A[0]),
-                                     log10(self.domain_A[1])))
+        self.A = 10**_random_range_((np.log10(self.domain_A[0]),
+                                     np.log10(self.domain_A[1])))
         return self.A
 
     def draw_Z(self):
-        max_Z = 0.2 if np.random.rand() <= 0.05 else self.domain_Z[1]
-        self.Z = _random_range_((self.domain_Z[0], max_Z))
+        domain_Z = (self.domain_Z[0], 0.2) if np.random.rand() <= 0.05 \
+                    else (0.2, self.domain_Z[1])
+        self.Z = _random_range_(domain_Z)
         return self.Z
 
     def draw_tau_V(self, mean=1.2, std=0.9851185):
         self.tau_V = _rejection_(lambda x: norm.pdf(x, loc=mean, scale=std),
                                  domain=self.domain_tau_V,
-                                 range=(0.0, norm.pdf(mean, loc=mean,
-                                                      scale=std)))
+                                 top=norm.pdf(mean, loc=mean, scale=std))
         return self.tau_V
 
     def draw_mu_V(self, mean=0.3, std=0.36573657):
         self.mu_V = _rejection_(lambda x: norm.pdf(x, loc=mean, scale=std),
                                 domain=self.domain_mu_V,
-                                range=(0.0, norm.pdf(mean, loc=mean,
-                                                     scale=std)))
+                                top=norm.pdf(mean, loc=mean, scale=std))
         return self.mu_V
 
     def draw_sigma_v(self):
         self.sigma_v = _random_range_(self.domain_sigma_v)
         return self.sigma_v
 
-    def sample_PDF(self, size=1, pristine=False):
+    def get_samples(self, size=1, pristine=False):
+        self._clean_draws_()
+
         columns = ["t_form", "gamma", "truncated", "t_trun", "tau_trun",
                    "t_burst", "t_ext", "A", "Z", "tau_V", "mu_V", "sigma_v"]
         sample = OrderedDict([(kw, []) for kw in columns])
@@ -173,23 +206,13 @@ class PDF(object):
             sample["tau_V"] += [self.draw_tau_V()]
             sample["mu_V"] += [self.draw_mu_V()]
             sample["sigma_v"] += [self.draw_sigma_v()]
-        if pristine or not self.sample:
+        if pristine or self.sample is None:
             self.sample = pd.DataFrame(sample, columns=columns)
-        elif pristine:
-            self.sample.append(pd.DataFrame(sample, columns=columns),
-                               ignore_index=True)
+        else:
+            self.sample = self.sample.append(pd.DataFrame(sample,
+                                             columns=columns),
+                                             ignore_index=True)
         return self.sample
-
-    def display_sample(self):
-        if not self.sample:
-            self.sample_PDF(size=self.minimum_sample_size)
-        elif self.sample.size < self.minimum_sample_size:
-            self.sample = self.sample_PDF(
-                size=self.minimum_sample_size-self.sample.size+1,
-                pristine=False)
-
-        # implement plots here!
-        return None
 
 
 class Models(object):
@@ -210,7 +233,7 @@ class Models(object):
 
         self.models_list = sorted([os.path.join(root, file)
                                   for root, subs, files in os.walk(self.path)
-                                  for file in files if matchfn(file,
+                                  for file in files if fnmatch(file,
                                                                self.match)])
 
     def get_label(self, fits_object):
