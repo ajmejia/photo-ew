@@ -103,7 +103,8 @@ class Sampler(object):
 
         self.truncated = True if np.random.rand() < 0.3 else False
 
-        if self.truncated and 1.0/self.gamma*1e9 < 10**self.log_domain_tau_trun[0]:
+        if self.truncated and\
+                1.0/self.gamma*1e9 < 10**self.log_domain_tau_trun[0]:
             self.truncated_swap_counter += 1
             self.truncated = False
             return self.truncated
@@ -290,18 +291,52 @@ class Models(object):
 
 class iSSAG(object):
 
-    def __init__(self, size=10000):
-        self.chen = PDF()
-        self.sample = self.chen.sample_PDF(size)
+    def __init__(self, size=1000):
+        self.chen = Sampler()
+        self.sample = self.chen.get_samples(size)
 
         self.models = Models()
         self.SFHs = self.set_all_SFHs()
 
-    def build_SFH(self, parameters):
+    def get_timescale(self, iloc):
+        """Define timescale for the iloc SFH."""
+        # models time scale
         t = self.models.ages.values
-        t = np.concatenate((t, [self.chen.t]))
+        # SSAG time parameters
+        ssag_time = sorted([self.sample.t_form[iloc],
+                            self.sample.t_burst[iloc],
+                            self.sample.t_trun[iloc]])
+        # build timescale
+        for i in xrange(len(ssag_time)):
+            if ssag_time[i] not in t:
+                t = np.insert(t, np.searchsorted(t, ssag_time[i]),
+                              ssag_time[i])
+        return t
+
+    def t_interpolate(self, iloc):
+        """Interpolate models in time."""
+        pass
+
+    def Z_interpolate(self, iloc):
+        """Interpolate models in metallicity."""
+        pass
+
+    def get_SFH_cont(self, iloc):
+        """Build continuous part of the SFH."""
+        pass
+
+    def get_SFH_burst(self, iloc):
+        """Build burst part of the SFH."""
+        pass
+
+    def get_SFH_trun(self, iloc):
+        """Build truncation part of the SFH."""
+        pass
+
+    def get_SFH(self, parameters):
+
         SFH = pd.Series()
         return SFH
 
-    def get_all_SFHs(self):
+    def set_all_SFHs(self):
         pass
