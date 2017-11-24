@@ -285,6 +285,7 @@ class Models(object):
         if not all([all(ages[0] == ages_i) for ages_i in ages[1:]]):
             raise(ValueError, "not all models have same age sampling.")
 
+        self.metalicities = pd.Series(labels)
         self.ages = ages[0]
         self.SEDs_stellar = OrderedDict(zip(labels, SEDs_stellar))
         self.SEDs_nebular = OrderedDict(zip(labels, SEDs_nebular))
@@ -303,12 +304,10 @@ class iSSAG(object):
 
         self.SFHs = self.set_all_SFHs()
 
-    def get_time_interpolation(self, iloc):
+    def get_time_interpolation(self, iloc, SEDs):
         """Interpolate models in time."""
-        # copy models
-        models = self.models.SEDs_nebular.copy()
         # copy models timescale
-        t = self.models.ages.values.copy()
+        t = self.models.ages.copy()
         # SSAG time parameters
         t_new = sorted([self.sample.t_form[iloc],
                         self.sample.t_burst[iloc],
@@ -321,13 +320,21 @@ class iSSAG(object):
                 # interpolate in models (j, j+1) assuming linearity in log-ages
                 t_0, t_1, t_2 = np.log10([t_new, t[j], t[j+1]])
                 v, w = (t_2 - t_0)/(t_2 - t_1), (t_0 - t_1)/(t_2 - t_1)
-                new_model = v * models.get(j) + w * models.get(j+1)
-                models = models.insert(j, t_0, new_model)
-        return models
+                new_model = v * SEDs.get(j) + w * SEDs.get(j+1)
+                SEDs = SEDs.insert(j, t_0, new_model)
+        return SEDs
 
-    def get_metallicity_interpolation(self, iloc, Z, Z_i):
+    def get_metallicity_interpolation(self, iloc):
         """Interpolate models in metallicity."""
-        pass
+        Z = self.models.metalicities.copy()
+        Z_new = self.sample.Z[iloc]
+        models = self.models.SEDs_nebular.copy()
+        if Z_i not in Z:
+            j = np.searchsorted(Z, Z_new)
+            Z_0, Z_1, Z_2 = np.log10([Z_new, Z[j], Z[j+1]])
+            v, w = (Z_2 - Z_0)/(Z_2 - Z_1), (Z_0 - Z_1)/(Z_2 - Z_1)
+            new_model = v * models.get(Z[j]) + w * models.get(Z[j+1])
+        return new_model
 
     def get_SFH_cont(self, iloc):
         """Build continuous part of the SFH."""
