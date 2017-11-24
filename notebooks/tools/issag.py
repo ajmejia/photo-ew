@@ -321,8 +321,9 @@ class iSSAG(object):
                 # interpolate in models (j, j+1) assuming linearity in log-ages
                 t_0, t_1, t_2 = np.log10([t_new, t[j], t[j+1]])
                 v, w = (t_2 - t_0)/(t_2 - t_1), (t_0 - t_1)/(t_2 - t_1)
-                new_models = v * models.get(j) + w * models.get(j+1)
-        return new_models
+                new_model = v * models.get(j) + w * models.get(j+1)
+                models = models.insert(j, t_0, new_model)
+        return models
 
     def get_metallicity_interpolation(self, iloc, Z, Z_i):
         """Interpolate models in metallicity."""
