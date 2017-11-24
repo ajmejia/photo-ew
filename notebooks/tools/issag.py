@@ -228,7 +228,7 @@ class Models(object):
             self.path = path
 
         if not match:
-            self.match = "*"
+            self.match = "*.fits"
         else:
             self.match = match
 
@@ -236,6 +236,9 @@ class Models(object):
                                   for root, subs, files in os.walk(self.path)
                                   for file in files if fnmatch(file,
                                                                self.match)])
+        self.ages = None
+        self.SEDs_stellar = None
+        self.SEDs_nebular = None
 
     def get_label(self, fits_object):
         return fits_object[2].data["Zstars"][0]
@@ -274,11 +277,11 @@ class Models(object):
         labels, ages, SEDs_stellar, SEDs_nebular = [], [], [], []
         for fits_name in self.models_list:
             with fits.open(fits_name) as fits_object:
-                models = self.read_pegase_model(fits_object)
-                labels += [self.get_pegase_label(fits_object)]
+                models = self.get_SSP(fits_object)
+                labels += [self.get_label(fits_object)]
                 SEDs_stellar += [models[1]]
                 SEDs_nebular += [models[2]]
-                ages += [self.get_pegase_ages(fits_object)]
+                ages += [self.get_ages(fits_object)]
         if not all([all(ages[0] == ages_i) for ages_i in ages[1:]]):
             raise(ValueError, "not all models have same age sampling.")
 
@@ -296,28 +299,32 @@ class iSSAG(object):
         self.sample = self.chen.get_samples(size)
 
         self.models = Models()
+        self.models.set_all_models()
+
         self.SFHs = self.set_all_SFHs()
 
-    def get_timescale(self, iloc):
-        """Define timescale for the iloc SFH."""
-        # models time scale
-        t = self.models.ages.values
-        # SSAG time parameters
-        ssag_time = sorted([self.sample.t_form[iloc],
-                            self.sample.t_burst[iloc],
-                            self.sample.t_trun[iloc]])
-        # build timescale
-        for i in xrange(len(ssag_time)):
-            if ssag_time[i] not in t:
-                t = np.insert(t, np.searchsorted(t, ssag_time[i]),
-                              ssag_time[i])
-        return t
-
-    def t_interpolate(self, iloc):
+    def get_time_interpolation(self, iloc):
         """Interpolate models in time."""
-        pass
+        # copy models
+        models = self.models.SEDs_nebular.copy()
+        # copy models timescale
+        t = self.models.ages.values.copy()
+        # SSAG time parameters
+        t_new = sorted([self.sample.t_form[iloc],
+                        self.sample.t_burst[iloc],
+                        self.sample.t_trun[iloc]])
+        for i in xrange(len(t_new)):
+            if t_new[i] not in t:
+                # find column j such that:
+                # t[j] < t_new[i] < t[j+1]
+                j = np.searchsorted(t, t_new[i])
+                # interpolate in models (j, j+1) assuming linearity in log-ages
+                t_0, t_1, t_2 = np.log10([t_new, t[j], t[j+1]])
+                v, w = (t_2 - t_0)/(t_2 - t_1), (t_0 - t_1)/(t_2 - t_1)
+                new_models = v * models.get(j) + w * models.get(j+1)
+        return new_models
 
-    def Z_interpolate(self, iloc):
+    def get_metallicity_interpolation(self, iloc, Z, Z_i):
         """Interpolate models in metallicity."""
         pass
 
