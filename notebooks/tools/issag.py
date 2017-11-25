@@ -337,62 +337,43 @@ class iSSAG(object):
             new_model = v * models.get(Z[j]) + w * models.get(Z[j+1])
         return new_model
 
-    def get_SFH_cont(self, iloc, timescale):
-        """Build continuous part of the SFH."""
-        if not all([time in timescale for time in [self.sample.t_form[iloc],
-                                                   self.sample.t_burst[iloc],
-                                                   self.sample.t_trun[iloc]]]):
+    def get_SFH(self, iloc, timescale):
+        """Build SFH from iloc SSAG galaxy."""
+        t_form = self.sample.t_form[iloc]
+        t_burst_i = self.sample.t_burst[iloc]
+        t_burst_f = t_burst_i - self.sample.t_ext[iloc]
+        A = self.sample.A[iloc]
+        t_trun = self.sample.t_trun[iloc]
+        gamma = self.sample.gamma[iloc]
+        tau_trun = self.sample.tau_trun[iloc]
+        if not all([time in timescale for time in [t_form,
+                                                   t_burst_i,
+                                                   t_burst_f,
+                                                   t_trun] if time != np.nan]):
             raise(ValueError, "You need to interpolate in time first.")
 
-        mask = np.ones(timescale.size, dtype=np.bool)
-        mask[timescale > self.sample.t_form[iloc]] = False
+        # build main SFH (SFH_cont)
+        mask_cont = np.ones(timescale.size, dtype=np.bool)
+        mask_cont[timescale > t_form] = False
         if self.sample.trun[iloc]:
-            mask[timescale <= self.sample.t_trun[iloc]] = False
-
+            mask_cont[timescale <= t_trun] = False
         SFH_cont = np.zeros(timescale.size, dtype=np.float)
-        SFH_cont[mask] = np.exp(-(self.sample.t_form[iloc] - timescale) *
-                                self.sample.gamma[iloc])
-
-        return SFH_cont
-
-    def get_SFH_trun(self, iloc, timescale):
-        """Build truncation part of the SFH."""
-        if not all([time in timescale for time in [self.sample.t_form[iloc],
-                                                   self.sample.t_burst[iloc],
-                                                   self.sample.t_trun[iloc]]]):
-            raise(ValueError, "You need to interpolate in time first.")
-
-        mask = np.ones(timescale.size, dtype=np.bool)
-        mask[timescale <= self.sample.t_trun] = False
-
+        SFH_cont[mask_cont] = np.exp(-(t_form - timescale) * gamma)
+        # build truncation (SFH_trun)
+        mask_trun = np.ones(timescale.size, dtype=np.bool)
+        mask_trun[timescale <= t_trun] = False
         SFH_trun = np.zeros(timescale.size, dtype=np.float)
-        SFH_trun[mask] = np.exp(-(self.sample.t_trun[iloc] - timescale) /
-                                self.sample.tau_trun[iloc])
-
-        return SFH_trun
-
-    def get_SFH_burst(self, iloc, timescale):
-        """Build burst part of the SFH."""
-        if not all([time in timescale for time in [self.sample.t_form[iloc],
-                                                   self.sample.t_burst[iloc],
-                                                   self.sample.t_trun[iloc]]]):
-            raise(ValueError, "You need to interpolate in time first.")
-
-        mask = np.ones(timescale.size, dtype=np.bool)
-        mask[self.sample.t_burst[iloc] -
-             self.sample.t_ext[iloc] < timescale] = False
-        mask[self.sample.t_burst[iloc] > timescale] = False
-
+        SFH_trun[mask_trun] = np.exp(-(t_trun - timescale) / tau_trun)
+        # build burst (SFH_burst)
+        mask_burst = np.ones(timescale.size, dtype=np.bool)
+        mask_burst[t_burst - t_ext < timescale] = False
+        mask_burst[t_burst > timescale] = False
         mass_under = np.trapz(SFH_cont+SFH_trun, timescale)
         SFH_burst = np.zeros(timescale.size, dtype=np.float)
-        SFH_burst[mask] = mass_under * self.sample.A[iloc] /\
-            self.sample.t_ext[iloc]
+        SFH_burst[mask_burst] = mass_under * A / t_ext
 
-        return SFH_burst
+        SFH = pd.Series(SFH_cont+SFH_trun+SFH_burst, timescale, name=iloc)
 
-    def get_SFH(self, iloc):
-        """Build full SFH."""
-        SFH = pd.Series()
         return SFH
 
     def set_all_SFHs(self):
