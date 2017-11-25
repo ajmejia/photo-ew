@@ -221,7 +221,7 @@ class Models(object):
     def __init__(self, env_var="ssp-bc03", path=None, match=None):
         """Load SSP models from given path OR environment variable."""
         if not path:
-            self.path = os.path.expandvars("#{ssp-bc03}".format(env_var))
+            self.path = os.path.expandvars("${}".format(env_var))
         else:
             if not os.path.exists(path):
                 raise(ValueError, "path '{path}' doesn't exist.".format(path))
@@ -310,9 +310,11 @@ class iSSAG(object):
         # draw some samples
         self.sample = self.chen.get_samples(size)
         # initialize models loader
-        self.models = Models()
+        self.models = Models(path="../models/PEGASE/")
         # read all models in default path
         self.models.set_all_models()
+        # initial value for library
+        self.SFHs = None
 
     def get_time_interpolation(self, iloc, SEDs):
         """Interpolate models in time."""
@@ -386,7 +388,7 @@ class iSSAG(object):
 
         return SFH
 
-    def get_all_SFHs(self):
+    def set_all_SFHs(self):
         """Build SFH library."""
         library = []
         for i in self.sample.index:
@@ -397,4 +399,4 @@ class iSSAG(object):
 
         self.SFHs = library
 
-        return self.SFHs
+        return None
