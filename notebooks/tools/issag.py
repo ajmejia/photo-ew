@@ -336,20 +336,61 @@ class iSSAG(object):
             new_model = v * models.get(Z[j]) + w * models.get(Z[j+1])
         return new_model
 
-    def get_SFH_cont(self, iloc):
+    def get_SFH_cont(self, iloc, timescale):
         """Build continuous part of the SFH."""
-        pass
+        if not all([time in timescale for time in [self.sample.t_form[iloc],
+                                                   self.sample.t_burst[iloc],
+                                                   self.sample.t_trun[iloc]]]):
+            raise(ValueError, "You need to interpolate in time first.")
 
-    def get_SFH_burst(self, iloc):
-        """Build burst part of the SFH."""
-        pass
+        mask = np.ones(timescale.size, dtype=np.bool)
+        mask[timescale > self.sample.t_form[iloc]] = False
+        if self.sample.trun[iloc]:
+            mask[timescale <= self.sample.t_trun[iloc]] = False
 
-    def get_SFH_trun(self, iloc):
+        SFH_cont = np.zeros(timescale.size, dtype=np.float)
+        SFH_cont[mask] = np.exp(-(self.sample.t_form[iloc] - timescale) *
+                                self.sample.gamma[iloc])
+
+        return SFH_cont
+
+    def get_SFH_trun(self, iloc, timescale):
         """Build truncation part of the SFH."""
-        pass
+        if not all([time in timescale for time in [self.sample.t_form[iloc],
+                                                   self.sample.t_burst[iloc],
+                                                   self.sample.t_trun[iloc]]]):
+            raise(ValueError, "You need to interpolate in time first.")
 
-    def get_SFH(self, parameters):
+        mask = np.ones(timescale.size, dtype=np.bool)
+        mask[timescale <= self.sample.t_trun] = False
 
+        SFH_trun = np.zeros(timescale.size, dtype=np.float)
+        SFH_trun[mask] = np.exp(-(self.sample.t_trun[iloc] - timescale) /
+                                self.sample.tau_trun[iloc])
+
+        return SFH_trun
+
+    def get_SFH_burst(self, iloc, timescale):
+        """Build burst part of the SFH."""
+        if not all([time in timescale for time in [self.sample.t_form[iloc],
+                                                   self.sample.t_burst[iloc],
+                                                   self.sample.t_trun[iloc]]]):
+            raise(ValueError, "You need to interpolate in time first.")
+
+        mask = np.ones(timescale.size, dtype=np.bool)
+        mask[self.sample.t_burst[iloc] -
+             self.sample.t_ext[iloc] < timescale] = False
+        mask[self.sample.t_burst[iloc] > timescale] = False
+
+        mass_under = np.trapz(SFH_cont+SFH_trun, timescale)
+        SFH_burst = np.zeros(timescale.size, dtype=np.float)
+        SFH_burst[mask] = mass_under * self.sample.A[iloc] /\
+            self.sample.t_ext[iloc]
+
+        return SFH_burst
+
+    def get_SFH(self, iloc):
+        """Build full SFH."""
         SFH = pd.Series()
         return SFH
 
