@@ -311,6 +311,7 @@ class iSSAG(object):
         # SSAG time parameters
         t_new = sorted([self.sample.t_form[iloc],
                         self.sample.t_burst[iloc],
+                        self.sample.t_burst[iloc] - self.sample.t_ext[iloc],
                         self.sample.t_trun[iloc]])
         for i in xrange(len(t_new)):
             if t_new[i] not in t:
