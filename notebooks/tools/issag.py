@@ -294,15 +294,25 @@ class Models(object):
 
 
 class iSSAG(object):
+    """A Star Formation History (SFH) library generator with
+       parametric approach a la Chen+2012.
+
+       Attributes:
+           chen     The sampler used to draw SFH parameters.
+           sample   The samples drawn for the current library.
+           models   The models loader.
+           SFHs     The SFH library.
+       """
 
     def __init__(self, size=1000):
+        # initialize SFH sampler
         self.chen = Sampler()
+        # draw some samples
         self.sample = self.chen.get_samples(size)
-
+        # initialize models loader
         self.models = Models()
+        # read all models in default path
         self.models.set_all_models()
-
-        self.SFHs = self.set_all_SFHs()
 
     def get_time_interpolation(self, iloc, SEDs):
         """Interpolate models in time."""
@@ -338,7 +348,7 @@ class iSSAG(object):
         return new_model
 
     def get_SFH(self, iloc, timescale):
-        """Build SFH from iloc SSAG galaxy."""
+        """Build SFH from iloc galaxy in the sample."""
         t_form = self.sample.t_form[iloc]
         t_burst_i = self.sample.t_burst[iloc]
         t_burst_f = t_burst_i - self.sample.t_ext[iloc]
@@ -376,5 +386,15 @@ class iSSAG(object):
 
         return SFH
 
-    def set_all_SFHs(self):
-        pass
+    def get_all_SFHs(self):
+        """Build SFH library."""
+        library = []
+        for i in self.sample.index:
+            SSP = self.get_metallicity_interpolation(i)
+            SSP = self.get_time_interpolation(i, SSP)
+
+            library += [self.get_SFH(i, SSP.columns)]
+
+        self.SFHs = library
+
+        return self.SFHs
