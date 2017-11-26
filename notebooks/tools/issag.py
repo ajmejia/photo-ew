@@ -241,7 +241,7 @@ class Models(object):
         self.SEDs_nebular = None
 
     def get_label(self, fits_object):
-        return fits_object[2].data["Zstars"][0]
+        return fits_object[2].data["Zstars"][0] / 0.02
 
     def get_ages(self, fits_object):
         return fits_object[2].data["AGE"]*1e6
@@ -304,85 +304,93 @@ class iSSAG(object):
            SFHs     The SFH library.
        """
 
-    def __init__(self, size=1000):
+    def __init__(self, size=1000,
+                 path="/home/mejia/Research/photometric-ew/models/PEGASE/"):
         # initialize SFH sampler
         self.chen = Sampler()
         # draw some samples
         self.sample = self.chen.get_samples(size)
         # initialize models loader
-        self.models = Models(path="../models/PEGASE/")
+        self.models = Models(path=path)
         # read all models in default path
         self.models.set_all_models()
         # initial value for library
         self.SFHs = None
 
+    def get_metallicity_interpolation(self, iloc):
+        """Interpolate models in metallicity."""
+        Z = self.models.metalicities.values.copy()
+        Z_new = self.sample.Z[iloc]
+        models = self.models.SEDs_nebular.copy()
+        if Z_new not in Z:
+            j = np.searchsorted(Z, Z_new)
+            Z_0, Z_1, Z_2 = np.log10([Z_new, Z[j-1], Z[j]])
+            v, w = (Z_2 - Z_0)/(Z_2 - Z_1), (Z_0 - Z_1)/(Z_2 - Z_1)
+            new_model = v * models.get(Z[j-1]) + w * models.get(Z[j])
+
+        else:
+            new_model = models.get(Z_new)
+        return new_model
+
     def get_time_interpolation(self, iloc, SEDs):
         """Interpolate models in time."""
         # copy models timescale
-        t = self.models.ages.copy()
+        t = SEDs.columns.copy()
         # SSAG time parameters
-        t_new = sorted([self.sample.t_form[iloc],
-                        self.sample.t_burst[iloc],
-                        self.sample.t_burst[iloc] - self.sample.t_ext[iloc],
-                        self.sample.t_trun[iloc]])
+        t_new = [self.sample.t_form[iloc],
+                 self.sample.t_burst[iloc],
+                 self.sample.t_burst[iloc] - self.sample.t_ext[iloc]]
+        if self.sample.truncated[iloc]:
+            t_new += [self.sample.t_trun[iloc]]
         for i in xrange(len(t_new)):
+            t = SEDs.columns.copy()
             if t_new[i] not in t:
                 # find column j such that:
                 # t[j] < t_new[i] < t[j+1]
                 j = np.searchsorted(t, t_new[i])
-                # interpolate in models (j, j+1) assuming linearity in log-ages
-                t_0, t_1, t_2 = np.log10([t_new, t[j], t[j+1]])
-                v, w = (t_2 - t_0)/(t_2 - t_1), (t_0 - t_1)/(t_2 - t_1)
-                new_model = v * SEDs.get(j) + w * SEDs.get(j+1)
-                SEDs = SEDs.insert(j, t_0, new_model)
-        return SEDs
+                # interpolate in models (j-1, j) assuming linearity in log-ages
 
-    def get_metallicity_interpolation(self, iloc):
-        """Interpolate models in metallicity."""
-        Z = self.models.metalicities.copy()
-        Z_new = self.sample.Z[iloc]
-        models = self.models.SEDs_nebular.copy()
-        if Z_i not in Z:
-            j = np.searchsorted(Z, Z_new)
-            Z_0, Z_1, Z_2 = np.log10([Z_new, Z[j], Z[j+1]])
-            v, w = (Z_2 - Z_0)/(Z_2 - Z_1), (Z_0 - Z_1)/(Z_2 - Z_1)
-            new_model = v * models.get(Z[j]) + w * models.get(Z[j+1])
-        return new_model
+                t_0, t_1, t_2 = np.log10([t_new[i], t[j-1], t[j]])
+                v, w = (t_2 - t_0)/(t_2 - t_1), (t_0 - t_1)/(t_2 - t_1)
+                new_model = v * SEDs.get(t[j-1]) + w * SEDs.get(t[j])
+                SEDs.insert(j, t_new[i], new_model)
+        return SEDs
 
     def get_SFH(self, iloc, timescale):
         """Build SFH from iloc galaxy in the sample."""
         t_form = self.sample.t_form[iloc]
+        gamma = self.sample.gamma[iloc]
         t_burst_i = self.sample.t_burst[iloc]
         t_burst_f = t_burst_i - self.sample.t_ext[iloc]
         A = self.sample.A[iloc]
         t_trun = self.sample.t_trun[iloc]
-        gamma = self.sample.gamma[iloc]
         tau_trun = self.sample.tau_trun[iloc]
+
         if not all([time in timescale for time in [t_form,
                                                    t_burst_i,
                                                    t_burst_f,
-                                                   t_trun] if time != np.nan]):
-            raise(ValueError, "You need to interpolate in time first.")
+                                                   t_trun] if pd.notna(time)]):
+            raise ValueError("You need to interpolate in time first.")
 
-        # build main SFH (SFH_cont)
+        # build truncation (SFH_trun) and main SFH (SFH_cont)
         mask_cont = np.ones(timescale.size, dtype=np.bool)
         mask_cont[timescale > t_form] = False
-        if self.sample.trun[iloc]:
+        SFH_trun = np.zeros(timescale.size)
+        if self.sample.truncated[iloc]:
             mask_cont[timescale <= t_trun] = False
-        SFH_cont = np.zeros(timescale.size, dtype=np.float)
-        SFH_cont[mask_cont] = np.exp(-(t_form - timescale) * gamma)
-        # build truncation (SFH_trun)
-        mask_trun = np.ones(timescale.size, dtype=np.bool)
-        mask_trun[timescale <= t_trun] = False
-        SFH_trun = np.zeros(timescale.size, dtype=np.float)
-        SFH_trun[mask_trun] = np.exp(-(t_trun - timescale) / tau_trun)
+            mask_trun = np.ones(timescale.size, dtype=np.bool)
+            mask_trun[timescale > t_trun] = False
+            SFH_trun[mask_trun] = np.exp(-(t_trun - timescale[mask_trun]) / tau_trun)
+            SFH_trun[mask_trun] *= np.exp(-(t_form - t_trun) * gamma*1e-9)
+        SFH_cont = np.zeros(timescale.size)
+        SFH_cont[mask_cont] = np.exp(-(t_form - timescale[mask_cont]) * gamma*1e-9)
         # build burst (SFH_burst)
         mask_burst = np.ones(timescale.size, dtype=np.bool)
-        mask_burst[t_burst - t_ext < timescale] = False
-        mask_burst[t_burst > timescale] = False
+        mask_burst[t_burst_f > timescale] = False
+        mask_burst[t_burst_i < timescale] = False
         mass_under = np.trapz(SFH_cont+SFH_trun, timescale)
-        SFH_burst = np.zeros(timescale.size, dtype=np.float)
-        SFH_burst[mask_burst] = mass_under * A / t_ext
+        SFH_burst = np.zeros(timescale.size)
+        SFH_burst[mask_burst] = mass_under * A / (t_burst_i - t_burst_f)
 
         SFH = pd.Series(SFH_cont+SFH_trun+SFH_burst, timescale, name=iloc)
 
