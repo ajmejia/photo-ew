@@ -220,22 +220,22 @@ class Models(object):
 
     def __init__(self, env_var="ssp-bc03", path=None, match=None):
         """Load SSP models from given path OR environment variable."""
-        if not path:
+        if path is None:
             self.path = os.path.expandvars("${}".format(env_var))
         else:
             if not os.path.exists(path):
-                raise(ValueError, "path '{path}' doesn't exist.".format(path))
+                raise ValueError("path '{}' doesn't exist.".format(path))
             self.path = path
 
         if not match:
-            self.match = "*.fits"
+            self.match = "*.fits.gz"
         else:
             self.match = match
 
         self.models_list = sorted([os.path.join(root, file)
                                   for root, subs, files in os.walk(self.path)
-                                  for file in files if fnmatch(file,
-                                                               self.match)])
+                                  for file in files
+                                  if fnmatch(file, self.match)])
         self.ages = None
         self.SEDs_stellar = None
         self.SEDs_nebular = None
@@ -265,9 +265,9 @@ class Models(object):
         fl_neb_tot = fl_neb_tot[uniq_wl]
 
         SEDs_ste = pd.DataFrame(fl_ste_tot, index=wl_sor,
-                                columns=self.get_pegase_ages(fits_object))
+                                columns=self.get_ages(fits_object))
         SEDs_tot = pd.DataFrame(fl_ste_tot+fl_neb_tot, index=wl_sor,
-                                columns=self.get_pegase_ages(fits_object))
+                                columns=self.get_ages(fits_object))
 
         return SEDs_ste, SEDs_tot
 
@@ -277,10 +277,10 @@ class Models(object):
         labels, ages, SEDs_stellar, SEDs_nebular = [], [], [], []
         for fits_name in self.models_list:
             with fits.open(fits_name) as fits_object:
-                models = self.get_SSP(fits_object)
+                stellar, nebular = self.get_SSP(fits_object)
                 labels += [self.get_label(fits_object)]
-                SEDs_stellar += [models[1]]
-                SEDs_nebular += [models[2]]
+                SEDs_stellar += [stellar]
+                SEDs_nebular += [nebular]
                 ages += [self.get_ages(fits_object)]
         if not all([all(ages[0] == ages_i) for ages_i in ages[1:]]):
             raise(ValueError, "not all models have same age sampling.")
