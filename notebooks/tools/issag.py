@@ -37,7 +37,7 @@ class Sampler(object):
                  domain_gamma=(0.0, 1.0),
                  domain_t_trun=(1e6, 13.7e9),
                  log_domain_tau_trun=(7.0, 9.0),
-                 domain_t_burst=(1e6, 13.7e9),
+                 domain_t_burst=(1e6+3e8, 13.7e9),
                  domain_t_ext=(3e7, 3e8),
                  domain_A=(0.03, 4.0),
                  domain_Z=(0.005, 2.5),
@@ -156,9 +156,7 @@ class Sampler(object):
         if not self.t_burst:
             self.draw_t_burst()
 
-        min_t_ext = min(self.domain_t_ext[0], self.t_burst)
-        max_t_ext = min(self.domain_t_ext[1], self.t_burst)
-        self.t_ext = _random_range_((min_t_ext, max_t_ext))
+        self.t_ext = _random_range_(self.domain_t_ext)
         return self.t_ext
 
     def draw_A(self):
@@ -380,10 +378,12 @@ class iSSAG(object):
             mask_cont[timescale <= t_trun] = False
             mask_trun = np.ones(timescale.size, dtype=np.bool)
             mask_trun[timescale > t_trun] = False
-            SFH_trun[mask_trun] = np.exp(-(t_trun - timescale[mask_trun]) / tau_trun)
+            SFH_trun[mask_trun] = np.exp(-(t_trun - timescale[mask_trun]) /
+                                         tau_trun)
             SFH_trun[mask_trun] *= np.exp(-(t_form - t_trun) * gamma*1e-9)
         SFH_cont = np.zeros(timescale.size)
-        SFH_cont[mask_cont] = np.exp(-(t_form - timescale[mask_cont]) * gamma*1e-9)
+        SFH_cont[mask_cont] = np.exp(-(t_form - timescale[mask_cont]) *
+                                     gamma*1e-9)
         # build burst (SFH_burst)
         mask_burst = np.ones(timescale.size, dtype=np.bool)
         mask_burst[t_burst_f > timescale] = False
@@ -408,3 +408,7 @@ class iSSAG(object):
         self.SFHs = library
 
         return None
+
+    def get_SED(self, iloc):
+        """Build the SED using the self.SFHs[iloc]."""
+        pass
