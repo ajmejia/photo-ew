@@ -35,9 +35,9 @@ class Sampler(object):
 
     def __init__(self, domain_t_form=(1.5e9, 13.7e9),
                  domain_gamma=(0.0, 1.0),
-                 domain_t_trun=(0.0, 13.7e9),
+                 domain_t_trun=(1e6, 13.7e9),
                  log_domain_tau_trun=(7.0, 9.0),
-                 domain_t_burst=(0.0, 13.7e9),
+                 domain_t_burst=(1e6, 13.7e9),
                  domain_t_ext=(3e7, 3e8),
                  domain_A=(0.03, 4.0),
                  domain_Z=(0.005, 2.5),
@@ -124,7 +124,7 @@ class Sampler(object):
         if not self.t_form:
             self.draw_t_form()
 
-        self.t_trun = _random_range_(self.domain_t_trun)
+        self.t_trun = _random_range_((self.domain_t_trun[0], self.t_form))
         return self.t_trun
 
     def draw_tau_trun(self):
