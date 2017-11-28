@@ -417,12 +417,14 @@ class iSSAG(object):
             SSP = self.get_time_interpolation(i, SSP)
 
             SFHs[i] = self.get_SFH(i, SSP.columns)
+            # compute dust effect
             SEDs[i] = np.average(SSP.values,
                                  weights=np.tile(SFHs[i],
                                                  (SSP.index.size, 1)),
                                  axis=1)
 
         self.SFHs = SFHs
+        # compute convolution with Gaussian(v=0, sigma_v)
         self.SEDs = pd.DataFrame(SEDs, index=self.models.wavelength)
 
         return None
