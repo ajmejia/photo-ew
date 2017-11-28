@@ -219,26 +219,25 @@ class Models(object):
     def __init__(self, env_var="ssp-bc03", path=None, match=None):
         """Load SSP models from given path OR environment variable."""
         if path is None:
-            self.path = os.path.expandvars("${}".format(env_var))
+            path = os.path.expandvars("${}".format(env_var))
         else:
             if not os.path.exists(path):
                 raise ValueError("path '{}' doesn't exist.".format(path))
-            self.path = path
 
         if not match:
-            self.match = "*.fits.gz"
-        else:
-            self.match = match
+            match = "*"
 
         self.models_list = sorted([os.path.join(root, file)
-                                  for root, subs, files in os.walk(self.path)
+                                  for root, subs, files in os.walk(path)
                                   for file in files
-                                  if fnmatch(file, self.match)])
+                                  if fnmatch(file, match)])
+        self.metallicities = None
         self.ages = None
+        self.wavelenth = None
         self.SEDs_stellar = None
         self.SEDs_nebular = None
 
-    def get_label(self, fits_object):
+    def get_metallicities(self, fits_object):
         return fits_object[2].data["Zstars"][0] / 0.02
 
     def get_ages(self, fits_object):
@@ -269,24 +268,25 @@ class Models(object):
 
         return SEDs_ste, SEDs_tot
 
-    def set_all_models(self):
+    def set_all(self):
         """Reads ALL models found in path."""
 
-        labels, ages, SEDs_stellar, SEDs_nebular = [], [], [], []
+        metallicities, ages, SEDs_stellar, SEDs_nebular = [], [], [], []
         for fits_name in self.models_list:
             with fits.open(fits_name) as fits_object:
                 stellar, nebular = self.get_SSP(fits_object)
-                labels += [self.get_label(fits_object)]
+                metallicities += [self.get_metallicities(fits_object)]
                 SEDs_stellar += [stellar]
                 SEDs_nebular += [nebular]
                 ages += [self.get_ages(fits_object)]
         if not all([all(ages[0] == ages_i) for ages_i in ages[1:]]):
             raise(ValueError, "not all models have same age sampling.")
 
-        self.metalicities = pd.Series(labels)
+        self.metalicities = pd.Series(metallicities)
         self.ages = ages[0]
-        self.SEDs_stellar = OrderedDict(zip(labels, SEDs_stellar))
-        self.SEDs_nebular = OrderedDict(zip(labels, SEDs_nebular))
+        self.wavelength = stellar.index.values
+        self.SEDs_stellar = OrderedDict(zip(metallicities, SEDs_stellar))
+        self.SEDs_nebular = OrderedDict(zip(metallicities, SEDs_nebular))
 
         return None
 
@@ -311,7 +311,7 @@ class iSSAG(object):
         # initialize models loader
         self.models = Models(path=path)
         # read all models in default path
-        self.models.set_all_models()
+        self.models.set_all()
         # initial value for library
         self.SFHs = None
 
@@ -398,12 +398,12 @@ class iSSAG(object):
 
     def set_all_SFHs(self):
         """Build SFH library."""
-        SFHs = []
+        SFHs = OrderedDict()
         for i in self.sample.index:
             SSP = self.get_metallicity_interpolation(i)
             SSP = self.get_time_interpolation(i, SSP)
 
-            SFHs += [self.get_SFH(i, SSP.columns)]
+            SFHs[i] = self.get_SFH(i, SSP.columns)
 
         self.SFHs = SFHs
 
@@ -411,18 +411,18 @@ class iSSAG(object):
 
     def set_all_SEDs(self):
         """Build both: the SED and the SFHs."""
-        SFHs, SEDs = [], []
+        SFHs, SEDs = OrderedDict(), OrderedDict()
         for i in self.sample.index:
             SSP = self.get_metallicity_interpolation(i)
             SSP = self.get_time_interpolation(i, SSP)
 
-            SFHs += [self.get_SFH(i, SSP.columns)]
-            SEDs += [np.average(SSP.values,
-                                weights=np.tile(SFHs[-1],
-                                                (SSP.index.size, 1)),
-                                axis=1)]
+            SFHs[i] = self.get_SFH(i, SSP.columns)
+            SEDs[i] = np.average(SSP.values,
+                                 weights=np.tile(SFHs[i],
+                                                 (SSP.index.size, 1)),
+                                 axis=1)
 
         self.SFHs = SFHs
-        self.SEDs = SEDs
+        self.SEDs = pd.DataFrame(SEDs, index=self.models.wavelength)
 
         return None
