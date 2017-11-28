@@ -330,10 +330,10 @@ class iSSAG(object):
             new_model = models.get(Z_new)
         return new_model
 
-    def get_time_interpolation(self, iloc, SEDs):
+    def get_time_interpolation(self, iloc, SSP):
         """Interpolate models in time."""
         # copy models timescale
-        t = SEDs.columns.copy()
+        t = SSP.columns.copy()
         # SSAG time parameters
         t_new = [self.sample.t_form[iloc],
                  self.sample.t_burst[iloc],
@@ -341,7 +341,7 @@ class iSSAG(object):
         if self.sample.truncated[iloc]:
             t_new += [self.sample.t_trun[iloc]]
         for i in xrange(len(t_new)):
-            t = SEDs.columns.copy()
+            t = SSP.columns.copy()
             if t_new[i] not in t:
                 # find column j such that:
                 # t[j] < t_new[i] < t[j+1]
@@ -350,9 +350,9 @@ class iSSAG(object):
 
                 t_0, t_1, t_2 = np.log10([t_new[i], t[j-1], t[j]])
                 v, w = (t_2 - t_0)/(t_2 - t_1), (t_0 - t_1)/(t_2 - t_1)
-                new_model = v * SEDs.get(t[j-1]) + w * SEDs.get(t[j])
-                SEDs.insert(j, t_new[i], new_model)
-        return SEDs
+                new_model = v * SSP.get(t[j-1]) + w * SSP.get(t[j])
+                SSP.insert(j, t_new[i], new_model)
+        return SSP
 
     def get_SFH(self, iloc, timescale):
         """Build SFH from iloc galaxy in the sample."""
@@ -398,17 +398,31 @@ class iSSAG(object):
 
     def set_all_SFHs(self):
         """Build SFH library."""
-        library = []
+        SFHs = []
         for i in self.sample.index:
             SSP = self.get_metallicity_interpolation(i)
             SSP = self.get_time_interpolation(i, SSP)
 
-            library += [self.get_SFH(i, SSP.columns)]
+            SFHs += [self.get_SFH(i, SSP.columns)]
 
-        self.SFHs = library
+        self.SFHs = SFHs
 
         return None
 
-    def get_SED(self, iloc):
-        """Build the SED using the self.SFHs[iloc]."""
-        pass
+    def set_all_SEDs(self):
+        """Build both: the SED and the SFHs."""
+        SFHs, SEDs = [], []
+        for i in self.sample.index:
+            SSP = self.get_metallicity_interpolation(i)
+            SSP = self.get_time_interpolation(i, SSP)
+
+            SFHs += [self.get_SFH(i, SSP.columns)]
+            SEDs += [np.average(SSP.values,
+                                weights=np.tile(SFHs[-1],
+                                                (SSP.index.size, 1)),
+                                axis=1)]
+
+        self.SFHs = SFHs
+        self.SEDs = SEDs
+
+        return None
