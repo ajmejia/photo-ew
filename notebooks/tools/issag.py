@@ -315,6 +315,30 @@ class iSSAG(object):
         # initial value for library
         self.SFHs = None
 
+    def get_extinction_curve(self, iloc):
+        """Build extinction curve from Charlot & Fall (2001)."""
+        wl = self.models.wavelength
+        tau_V = self.sample.tau_V[iloc]
+        mu_V = self.sample.mu_V[iloc]
+        n_BC = np.count_nonzero(self.models.ages < 1e7)
+        n_ISM = self.models.ages.size - n_BC
+
+        ext_BC = np.tile(np.exp(-tau_V*(wl/5500.0)**(-0.7)),
+                         (n_BC, 1)).T
+        ext_ISM = np.tile(np.exp(-mu_V*tau_V*(wl/5500.0)**(-0.7)),
+                          (n_ISM, 1)).T
+
+        return np.column_stack((ext_BC, ext_ISM))
+
+    def set_valocity_dispersion(self, SED):
+        """Set velocity dispersion in given SED."""
+        wl = self.models.wavelenth
+        LOSVD = self.sample.sigma_v
+        wl_max = 3e5 / (3e5 - 6*LOSVD) * wl
+        G = norm.pdf((wl_max-wl)/wl*3e5, loc=0.0, scale=LOSVD)
+        SED = np.convolve(SED, G)
+        return None
+
     def get_metallicity_interpolation(self, iloc):
         """Interpolate models in metallicity."""
         Z = self.models.metalicities.values.copy()
@@ -415,16 +439,15 @@ class iSSAG(object):
         for i in self.sample.index:
             SSP = self.get_metallicity_interpolation(i)
             SSP = self.get_time_interpolation(i, SSP)
+            SSP = SSP * self.get_extinction_curve(i)
 
             SFHs[i] = self.get_SFH(i, SSP.columns)
-            # compute dust effect
             SEDs[i] = np.average(SSP.values,
-                                 weights=np.tile(SFHs[i],
-                                                 (SSP.index.size, 1)),
+                                 weights=np.tile(SFHs[i], (SSP.index.size, 1)),
                                  axis=1)
+            self.set_velocity_dispersion(SEDs[i])
 
         self.SFHs = SFHs
-        # compute convolution with Gaussian(v=0, sigma_v)
         self.SEDs = pd.DataFrame(SEDs, index=self.models.wavelength)
 
         return None
