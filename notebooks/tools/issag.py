@@ -477,7 +477,7 @@ class iSSAG(object):
             SEDs[i] = np.average(SSP.values,
                                  weights=np.tile(SFHs[i], (SSP.index.size, 1)),
                                  axis=1)
-            SEDs[i] = self.get_kinematics(i, SEDs[i])
+            # SEDs[i] = self.get_kinematics(i, SEDs[i])
 
         self.SFHs = SFHs
         self.SEDs = pd.DataFrame(SEDs, index=self.models.wavelength)
