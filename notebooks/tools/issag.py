@@ -314,6 +314,9 @@ class iSSAG(object):
         self.models.set_all()
         # initial value for library
         self.SFHs = None
+        # initial value for SEDs
+        self.SEDs_nebular = None
+        self.SEDs_stellar = None
 
     def get_extinction_curve(self, iloc, timescale):
         """Build extinction curve from Charlot & Fall (2001)."""
@@ -371,25 +374,33 @@ class iSSAG(object):
 
         return SED_[nx:-nx]
 
-    def get_metallicity_interpolation(self, iloc):
+    def get_metallicity_interpolation(self, iloc, emission="nebular"):
         """Interpolate models in metallicity."""
         Z = self.models.metalicities.values.copy()
         Z_new = self.sample.Z[iloc]
-        models = self.models.SEDs_nebular.copy()
-        if Z_new not in Z:
-            j = np.searchsorted(Z, Z_new)
-            Z_0, Z_1, Z_2 = np.log10([Z_new, Z[j-1], Z[j]])
-            v, w = (Z_2 - Z_0)/(Z_2 - Z_1), (Z_0 - Z_1)/(Z_2 - Z_1)
-            new_model = v * models.get(Z[j-1]) + w * models.get(Z[j])
-
+        if emission == "nebular":
+            SSPs = (self.models.SEDs_nebular.copy(),)
+        elif emission == "stellar":
+            SSPs = (self.models.SEDs_stellar.copy(),)
+        elif emission == "both":
+            SSPs = (self.models.SEDs_nebular.copy(),
+                    self.models.SEDs_stellar.copy())
         else:
-            new_model = models.get(Z_new)
-        return new_model
+            raise ValueError("Invalid model. Try: 'nebular', \
+                              'stellar' or 'both'.")
+        SSPs_new = []
+        if Z_new not in Z:
+            for SSP in SSPs:
+                j = np.searchsorted(Z, Z_new)
+                Z_0, Z_1, Z_2 = np.log10([Z_new, Z[j-1], Z[j]])
+                v, w = (Z_2 - Z_0)/(Z_2 - Z_1), (Z_0 - Z_1)/(Z_2 - Z_1)
+                SSPs_new += [v * SSP.get(Z[j-1]) + w * SSP.get(Z[j])]
+        else:
+            SSPs_new += [SSP.get(Z_new) for SSP in SSPs]
+        return SSPs_new
 
-    def get_time_interpolation(self, iloc, SSP):
+    def get_time_interpolation(self, iloc, SSPs):
         """Interpolate models in time."""
-        # copy models timescale
-        t = SSP.columns.copy()
         # SSAG time parameters
         t_new = [self.sample.t_form[iloc],
                  self.sample.t_burst[iloc],
@@ -397,18 +408,19 @@ class iSSAG(object):
         if self.sample.truncated[iloc]:
             t_new += [self.sample.t_trun[iloc]]
         for i in xrange(len(t_new)):
-            t = SSP.columns.copy()
+            t = SSPs[0].columns.copy()
             if t_new[i] not in t:
                 # find column j such that:
                 # t[j] < t_new[i] < t[j+1]
-                j = np.searchsorted(t, t_new[i])
-                # interpolate in models (j-1, j) assuming linearity in log-ages
+                k = np.searchsorted(t, t_new[i])
+                # interpolate in models (k-1, k) assuming linearity in log-ages
 
-                t_0, t_1, t_2 = np.log10([t_new[i], t[j-1], t[j]])
+                t_0, t_1, t_2 = np.log10([t_new[i], t[k-1], t[k]])
                 v, w = (t_2 - t_0)/(t_2 - t_1), (t_0 - t_1)/(t_2 - t_1)
-                new_model = v * SSP.get(t[j-1]) + w * SSP.get(t[j])
-                SSP.insert(j, t_new[i], new_model)
-        return SSP
+                for j in xrange(len(SSPs)):
+                    new_model = v * SSPs[j].get(t[k-1]) + w * SSPs[j].get(t[k])
+                    SSPs[j].insert(k, t_new[i], new_model)
+        return SSPs
 
     def get_SFH(self, iloc, timescale):
         """Build SFH from iloc galaxy in the sample."""
@@ -456,30 +468,48 @@ class iSSAG(object):
         """Build SFH library."""
         SFHs = OrderedDict()
         for i in self.sample.index:
-            SSP = self.get_metallicity_interpolation(i)
-            SSP = self.get_time_interpolation(i, SSP)
+            SSPs = self.get_metallicity_interpolation(i)
+            SSPs = self.get_time_interpolation(i, SSPs)
 
-            SFHs[i] = self.get_SFH(i, SSP.columns)
+            SFHs[i] = self.get_SFH(i, SSPs[0].columns)
 
         self.SFHs = SFHs
 
         return None
 
-    def set_all_SEDs(self):
+    def set_all_SEDs(self, emission="nebular"):
         """Build both: the SED and the SFHs."""
-        SFHs, SEDs = OrderedDict(), OrderedDict()
-        for i in self.sample.index:
-            SSP = self.get_metallicity_interpolation(i)
-            SSP = self.get_time_interpolation(i, SSP)
-            SSP = SSP * self.get_extinction_curve(i, SSP.columns)
+        SFHs = OrderedDict()
+        SEDs = []
+        columns = self.sample.index
+        for i in columns:
+            SSPs = self.get_metallicity_interpolation(i, emission=emission)
+            SSPs = self.get_time_interpolation(i, SSPs)
+            SFHs[i] = self.get_SFH(i, SSPs[0].columns)
 
-            SFHs[i] = self.get_SFH(i, SSP.columns)
-            SEDs[i] = np.average(SSP.values,
-                                 weights=np.tile(SFHs[i], (SSP.index.size, 1)),
-                                 axis=1)
-            # SEDs[i] = self.get_kinematics(i, SEDs[i])
+            for j in xrange(len(SSPs)):
+                SSPs[j] *= self.get_extinction_curve(i, SSPs[j].columns)
+
+                SEDs += [np.average(SSPs[j].values,
+                                    weights=np.tile(SFHs[i],
+                                                    (SSPs[j].index.size, 1)),
+                                    axis=1)]
+                # SEDs[-1] = self.get_kinematics(i, SEDs[-1])
 
         self.SFHs = SFHs
-        self.SEDs = pd.DataFrame(SEDs, index=self.models.wavelength)
-
+        if emission == "both":
+            self.SEDs_nebular = pd.DataFrame(np.array(SEDs[::2]).T,
+                                             index=self.models.wavelength,
+                                             columns=columns)
+            self.SEDs_stellar = pd.DataFrame(np.array(SEDs[1::2]).T,
+                                             index=self.models.wavelength,
+                                             columns=columns)
+        elif emission == "nebular":
+            self.SEDs_nebular = pd.DataFrame(np.array(SEDs).T,
+                                             index=self.models.wavelength,
+                                             columns=columns)
+        elif emission == "stellar":
+            self.SEDs_stellar = pd.DataFrame(np.array(SEDs).T,
+                                             index=self.models.wavelength,
+                                             columns=columns)
         return None
