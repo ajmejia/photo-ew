@@ -331,16 +331,45 @@ class iSSAG(object):
         return np.column_stack((ext_BC, ext_ISM))
 
     def get_kinematics(self, iloc, SED):
-        """Adds velocity dispersion to given SED."""
+        """Adds velocity dispersion to given SED.
+           This method was adapted from GALAXEV routines
+           (Bruzual & Charlot, 2003).
+           """
+        c_mks = 3e5
+        m = 6.0
+        nx = 100
         wl = self.models.wavelength
+        nwl = wl.size + 2*nx
         # LOSVD = self.sample.sigma_v[iloc]
-        LOSVD = 400.
-        wl_max = 3e5*5500.0 / (3e5-6.0*LOSVD)
-        mask = (wl_max-5500.0 <= wl) & (wl <= 5500.0+wl_max)
-        x = (wl[mask]/wl_max - 1.0)*3e5
-        G = norm.pdf(x, loc=0.0, scale=LOSVD)
-        SED = np.convolve(SED, G, mode="same")
-        return SED
+        LOSVD = 400.0
+
+        wl_, SED_ = np.zeros(nwl), np.zeros(nwl)
+        wl_[:nx] = wl[0]
+        wl_[nx:nwl-nx] = wl
+        wl_[nwl-nx:] = wl[-1]
+        SED_[:nx] = SED[0]
+        SED_[nx:nwl-nx] = SED
+        SED_[nwl-nx:] = SED[-1]
+        for i in xrange(nwl):
+            wl_max = c_mks*wl_[i] / (c_mks-m*LOSVD)
+            j = np.searchsorted(wl_, wl_max)
+            m2 = j + 1
+            m1 = 2 * i - m2
+
+            if m1 < 0:
+                m1 = 0
+            if m2 > nwl:
+                m2 = nwl
+
+            u, g = [], []
+            for j in xrange(m2-1, m1-1, -1):
+                u += [(wl_[i] / wl_[j]-1.0) * c_mks]
+                g += [SED_[j] * norm.pdf(u[-1], loc=0.0, scale=LOSVD)]
+
+            if i >= nx+1 and i < nwl-nx:
+                SED_[i-nx] = np.trapz(g, x=u)
+
+        return SED_[nx:-nx]
 
     def get_metallicity_interpolation(self, iloc):
         """Interpolate models in metallicity."""
