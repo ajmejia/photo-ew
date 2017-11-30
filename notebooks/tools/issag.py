@@ -446,6 +446,7 @@ class iSSAG(object):
         # build truncation (SFH_trun) and main SFH (SFH_cont)
         mask_cont = np.ones(timescale.size, dtype=np.bool)
         mask_cont[timescale > t_form] = False
+        mask_cont[(t_burst_f < timescale) & (timescale < t_burst_i)] = False
         SFH_trun = np.zeros(timescale.size)
         if self.sample.truncated[iloc]:
             mask_cont[timescale <= t_trun] = False
@@ -459,9 +460,9 @@ class iSSAG(object):
                                      gamma*1e-9)
         # build burst (SFH_burst)
         mask_burst = np.ones(timescale.size, dtype=np.bool)
-        mask_burst[t_burst_f > timescale] = False
-        mask_burst[t_burst_i < timescale] = False
-        mass_under = np.trapz(SFH_cont+SFH_trun, timescale)
+        mask_burst[timescale <= t_burst_f] = False
+        mask_burst[timescale >= t_burst_i] = False
+        mass_under = np.trapz(SFH_cont+SFH_trun, x=timescale)
         SFH_burst = np.zeros(timescale.size)
         SFH_burst[mask_burst] = mass_under * a_burst / (t_burst_i - t_burst_f)
 
