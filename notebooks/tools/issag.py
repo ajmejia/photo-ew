@@ -152,9 +152,13 @@ class Sampler(object):
             self.draw_t_ext()
 
         # tol_t_burst = 0.10 if self.truncated else 0.15
-        domain_t_burst = (self.domain_t_burst[0]+self.t_ext,
-                          (2e9 if self.t_form >= 2e9 else self.t_form))\
-            if np.random.rand() < 0.1 else (2e9, self.t_form)
+        if self.t_form >= 2e9:
+            domain_t_burst = (self.domain_t_burst[0]+self.t_ext, 2e9)\
+                if np.random.rand() < 0.1 else\
+                (2e9, self.t_form)
+        else:
+            domain_t_burst = (self.domain_t_burst[0]+self.t_ext, self.t_form)
+
         self.t_burst = _random_range_(domain_t_burst)
         return self.t_burst
 
