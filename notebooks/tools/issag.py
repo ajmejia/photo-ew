@@ -479,7 +479,7 @@ class iSSAG(object):
 
             sfhs[i] = self.get_sfh(i, ssps[0].columns)
 
-        self.sfhs = sfhs
+        self.sfhs = pd.DataFrame(sfhs)
 
         return None
 
@@ -503,7 +503,7 @@ class iSSAG(object):
                                     axis=1)]
                 # seds[-1] = self.get_kinematic_effects(i, seds[-1])
 
-        self.sfhs = sfhs
+        self.sfhs = pd.DataFrame(sfhs)
         if emission == "both":
             self.seds_nebular = pd.DataFrame(np.array(seds[::2]).T,
                                              index=wl,
