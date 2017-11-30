@@ -488,34 +488,35 @@ class iSSAG(object):
         sfhs = OrderedDict()
         seds = []
         columns = self.sample.index
+        wl = self.models.wavelength
         for i in columns:
             ssps = self.get_metallicity_interpolation(i, emission=emission)
             ssps = self.get_time_interpolation(i, ssps)
             sfhs[i] = self.get_sfh(i, ssps[0].columns)
-
+            timescale = sfhs[i].index
+            delta_t = np.diff(np.concatenate(([0.0], timescale)))
             for j in xrange(len(ssps)):
-                ssps[j] *= self.get_extinction_curve(i, ssps[j].columns)
-
+                ssps[j] *= self.get_extinction_curve(i, timescale)
+                mass_bins = sfhs[i] * delta_t
                 seds += [np.average(ssps[j].values,
-                                    weights=np.tile(sfhs[i],
-                                                    (ssps[j].index.size, 1)),
+                                    weights=np.tile(mass_bins, (wl.size, 1)),
                                     axis=1)]
                 # seds[-1] = self.get_kinematic_effects(i, seds[-1])
 
         self.sfhs = sfhs
         if emission == "both":
             self.seds_nebular = pd.DataFrame(np.array(seds[::2]).T,
-                                             index=self.models.wavelength,
+                                             index=wl,
                                              columns=columns)
             self.seds_stellar = pd.DataFrame(np.array(seds[1::2]).T,
-                                             index=self.models.wavelength,
+                                             index=wl,
                                              columns=columns)
         elif emission == "nebular":
             self.seds_nebular = pd.DataFrame(np.array(seds).T,
-                                             index=self.models.wavelength,
+                                             index=wl,
                                              columns=columns)
         elif emission == "stellar":
             self.seds_stellar = pd.DataFrame(np.array(seds).T,
-                                             index=self.models.wavelength,
+                                             index=wl,
                                              columns=columns)
         return None
