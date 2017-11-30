@@ -476,8 +476,9 @@ class iSSAG(object):
         for i in self.sample.index:
             ssps = self.get_metallicity_interpolation(i)
             ssps = self.get_time_interpolation(i, ssps)
+            timescale = ssps[0].columns
 
-            sfhs[i] = self.get_sfh(i, ssps[0].columns)
+            sfhs[i] = self.get_sfh(i, timescale)
 
         self.sfhs = pd.DataFrame(sfhs)
 
@@ -492,8 +493,8 @@ class iSSAG(object):
         for i in columns:
             ssps = self.get_metallicity_interpolation(i, emission=emission)
             ssps = self.get_time_interpolation(i, ssps)
-            sfhs[i] = self.get_sfh(i, ssps[0].columns)
-            timescale = sfhs[i].index
+            timescale = ssps[0].columns
+            sfhs[i] = self.get_sfh(i, timescale)
             delta_t = np.diff(np.concatenate(([0.0], timescale)))
             for j in xrange(len(ssps)):
                 ssps[j] *= self.get_extinction_curve(i, timescale)
