@@ -37,8 +37,8 @@ class Sampler(object):
                  domain_gamma=(0.0, 1.0),
                  domain_t_trun=(1e6, 13.7e9),
                  log_domain_tau_trun=(7.0, 9.0),
-                 domain_t_burst=(1e6+3e8, 13.7e9),
                  domain_t_ext=(3e7, 3e8),
+                 domain_t_burst=(1e6, 13.7e9),
                  domain_a_burst=(0.03, 4.0),
                  domain_z=(0.005, 2.5),
                  domain_tau_v=(0.0, 6.0),
@@ -141,23 +141,22 @@ class Sampler(object):
                                             np.log10(max_tau_trun)))
         return self.tau_trun
 
+    def draw_t_ext(self):
+        self.t_ext = _random_range_(self.domain_t_ext)
+        return self.t_ext
+
     def draw_t_burst(self):
         if self.t_form is None:
             self.draw_t_form()
+        if self.t_ext is None:
+            self.draw_t_ext()
 
-        tol_t_burst = 0.10 if self.truncated else 0.15
-        domain_t_burst = (self.domain_t_burst[0], 2e9)\
-            if np.random.rand() <= tol_t_burst\
-            else (2e9, self.t_form)
+        # tol_t_burst = 0.10 if self.truncated else 0.15
+        domain_t_burst = (self.domain_t_burst[0]+self.t_ext,
+                          (2e9 if self.t_form >= 2e9 else self.t_form))\
+            if np.random.rand() < 0.1 else (2e9, self.t_form)
         self.t_burst = _random_range_(domain_t_burst)
         return self.t_burst
-
-    def draw_t_ext(self):
-        if not self.t_burst:
-            self.draw_t_burst()
-
-        self.t_ext = _random_range_(self.domain_t_ext)
-        return self.t_ext
 
     def draw_a_burst(self):
         self.a_burst = 10**_random_range_((np.log10(self.domain_a_burst[0]),
@@ -199,13 +198,14 @@ class Sampler(object):
             sample["truncated"] += [self.draw_truncated()]
             sample["t_trun"] += [self.draw_t_trun()]
             sample["tau_trun"] += [self.draw_tau_trun()]
-            sample["t_burst"] += [self.draw_t_burst()]
             sample["t_ext"] += [self.draw_t_ext()]
+            sample["t_burst"] += [self.draw_t_burst()]
             sample["a_burst"] += [self.draw_a_burst()]
             sample["metallicity"] += [self.draw_z()]
             sample["tau_v"] += [self.draw_tau_v()]
             sample["mu_v"] += [self.draw_mu_v()]
             sample["sigma_v"] += [self.draw_sigma_v()]
+            self._clean_draws_()
         if pristine or self.sample is None:
             self.sample = pd.DataFrame(sample, columns=columns)
         else:
