@@ -39,10 +39,10 @@ class Sampler(object):
                  log_domain_tau_trun=(7.0, 9.0),
                  domain_t_burst=(1e6+3e8, 13.7e9),
                  domain_t_ext=(3e7, 3e8),
-                 domain_A=(0.03, 4.0),
-                 domain_Z=(0.005, 2.5),
-                 domain_tau_V=(0.0, 6.0),
-                 domain_mu_V=(0.0, 1.0),
+                 domain_a_burst=(0.03, 4.0),
+                 domain_z=(0.005, 2.5),
+                 domain_tau_v=(0.0, 6.0),
+                 domain_mu_v=(0.0, 1.0),
                  domain_sigma_v=(50.0, 400.0)):
         self.domain_t_form = domain_t_form
         self.domain_gamma = domain_gamma
@@ -50,10 +50,10 @@ class Sampler(object):
         self.log_domain_tau_trun = log_domain_tau_trun
         self.domain_t_burst = domain_t_burst
         self.domain_t_ext = domain_t_ext
-        self.domain_A = domain_A
-        self.domain_Z = domain_Z
-        self.domain_tau_V = domain_tau_V
-        self.domain_mu_V = domain_mu_V
+        self.domain_a_burst = domain_a_burst
+        self.domain_z = domain_z
+        self.domain_tau_v = domain_tau_v
+        self.domain_mu_v = domain_mu_v
         self.domain_sigma_v = domain_sigma_v
 
         self.t_form = None
@@ -63,10 +63,10 @@ class Sampler(object):
         self.tau_trun = None
         self.t_burst = None
         self.t_ext = None
-        self.A = None
-        self.Z = None
-        self.tau_V = None
-        self.mu_V = None
+        self.a_burst = None
+        self.metallicity = None
+        self.tau_v = None
+        self.mu_v = None
         self.sigma_v = None
 
         self.minimum_sample_size = 10000
@@ -82,10 +82,10 @@ class Sampler(object):
         self.tau_trun = None
         self.t_burst = None
         self.t_ext = None
-        self.A = None
-        self.Z = None
-        self.tau_V = None
-        self.mu_V = None
+        self.a_burst = None
+        self.metallicity = None
+        self.tau_v = None
+        self.mu_v = None
         self.sigma_v = None
         return None
 
@@ -159,28 +159,28 @@ class Sampler(object):
         self.t_ext = _random_range_(self.domain_t_ext)
         return self.t_ext
 
-    def draw_A(self):
-        self.A = 10**_random_range_((np.log10(self.domain_A[0]),
-                                     np.log10(self.domain_A[1])))
-        return self.A
+    def draw_a_burst(self):
+        self.a_burst = 10**_random_range_((np.log10(self.domain_a_burst[0]),
+                                           np.log10(self.domain_a_burst[1])))
+        return self.a_burst
 
-    def draw_Z(self):
-        domain_Z = (self.domain_Z[0], 0.2) if np.random.rand() <= 0.05 \
-                    else (0.2, self.domain_Z[1])
-        self.Z = _random_range_(domain_Z)
-        return self.Z
+    def draw_z(self):
+        domain_z = (self.domain_z[0], 0.2) if np.random.rand() <= 0.05 \
+                    else (0.2, self.domain_z[1])
+        self.metallicity = _random_range_(domain_z)
+        return self.metallicity
 
-    def draw_tau_V(self, mean=1.2, std=0.9851185):
-        self.tau_V = _rejection_(lambda x: norm.pdf(x, loc=mean, scale=std),
-                                 domain=self.domain_tau_V,
+    def draw_tau_v(self, mean=1.2, std=0.9851185):
+        self.tau_v = _rejection_(lambda x: norm.pdf(x, loc=mean, scale=std),
+                                 domain=self.domain_tau_v,
                                  top=norm.pdf(mean, loc=mean, scale=std))
-        return self.tau_V
+        return self.tau_v
 
-    def draw_mu_V(self, mean=0.3, std=0.36573657):
-        self.mu_V = _rejection_(lambda x: norm.pdf(x, loc=mean, scale=std),
-                                domain=self.domain_mu_V,
+    def draw_mu_v(self, mean=0.3, std=0.36573657):
+        self.mu_v = _rejection_(lambda x: norm.pdf(x, loc=mean, scale=std),
+                                domain=self.domain_mu_v,
                                 top=norm.pdf(mean, loc=mean, scale=std))
-        return self.mu_V
+        return self.mu_v
 
     def draw_sigma_v(self):
         self.sigma_v = _random_range_(self.domain_sigma_v)
@@ -190,7 +190,8 @@ class Sampler(object):
         self._clean_draws_()
 
         columns = ["t_form", "gamma", "truncated", "t_trun", "tau_trun",
-                   "t_burst", "t_ext", "A", "Z", "tau_V", "mu_V", "sigma_v"]
+                   "t_burst", "t_ext", "a_burst", "metallicity", "tau_v",
+                   "mu_v", "sigma_v"]
         sample = OrderedDict([(kw, []) for kw in columns])
         for i in xrange(size):
             sample["t_form"] += [self.draw_t_form()]
@@ -200,10 +201,10 @@ class Sampler(object):
             sample["tau_trun"] += [self.draw_tau_trun()]
             sample["t_burst"] += [self.draw_t_burst()]
             sample["t_ext"] += [self.draw_t_ext()]
-            sample["A"] += [self.draw_A()]
-            sample["Z"] += [self.draw_Z()]
-            sample["tau_V"] += [self.draw_tau_V()]
-            sample["mu_V"] += [self.draw_mu_V()]
+            sample["a_burst"] += [self.draw_a_burst()]
+            sample["metallicity"] += [self.draw_z()]
+            sample["tau_v"] += [self.draw_tau_v()]
+            sample["mu_v"] += [self.draw_mu_v()]
             sample["sigma_v"] += [self.draw_sigma_v()]
         if pristine or self.sample is None:
             self.sample = pd.DataFrame(sample, columns=columns)
@@ -234,8 +235,8 @@ class Models(object):
         self.metallicities = None
         self.ages = None
         self.wavelength = None
-        self.SEDs_stellar = None
-        self.SEDs_nebular = None
+        self.ssps_stellar = None
+        self.ssps_nebular = None
 
     def get_metallicities(self, fits_object):
         return fits_object[2].data["Zstars"][0] / 0.02
@@ -243,57 +244,57 @@ class Models(object):
     def get_ages(self, fits_object):
         return fits_object[2].data["AGE"]*1e6
 
-    def get_SSP(self, fits_object):
+    def get_ssp(self, fits_object):
         wl_ste = fits_object[3].data["BFIT"]
         fl_ste = fits_object[0].data.T
         wl_neb = fits_object[1].data["WAVE"]
         fl_neb = fits_object[1].data["FLUXLINE"]
 
-        wl_tot = np.concatenate((wl_ste, wl_neb))
-        wl_sor, uniq_wl = np.unique(wl_tot, return_index=True)
+        wl_merged = np.concatenate((wl_ste, wl_neb))
+        wl_sor, uniq_wl = np.unique(wl_merged, return_index=True)
 
-        fl_ste_tot = np.zeros((uniq_wl.size, fl_ste.shape[1]))
-        for j in xrange(fl_ste_tot.shape[1]):
-            fl_ste_tot[:, j] = np.interp(wl_sor, wl_ste, fl_ste[:, j],
-                                         left=0.0, right=0.0)
+        fl_ste_merged = np.zeros((uniq_wl.size, fl_ste.shape[1]))
+        for j in xrange(fl_ste_merged.shape[1]):
+            fl_ste_merged[:, j] = np.interp(wl_sor, wl_ste, fl_ste[:, j],
+                                            left=0.0, right=0.0)
 
-        fl_neb_tot = np.zeros((wl_tot.size, fl_ste.shape[1]))
-        fl_neb_tot[-wl_neb.size:] = fl_neb
-        fl_neb_tot = fl_neb_tot[uniq_wl]
+        fl_neb_merged = np.zeros((wl_merged.size, fl_ste.shape[1]))
+        fl_neb_merged[-wl_neb.size:] = fl_neb
+        fl_neb_merged = fl_neb_merged[uniq_wl]
 
-        SEDs_ste = pd.DataFrame(fl_ste_tot, index=wl_sor,
-                                columns=self.get_ages(fits_object))
-        SEDs_tot = pd.DataFrame(fl_ste_tot+fl_neb_tot, index=wl_sor,
-                                columns=self.get_ages(fits_object))
+        ssp_stellar = pd.DataFrame(fl_ste_merged, index=wl_sor,
+                                   columns=self.get_ages(fits_object))
+        ssp_nebular = pd.DataFrame(fl_ste_merged+fl_neb_merged, index=wl_sor,
+                                   columns=self.get_ages(fits_object))
 
-        return SEDs_ste, SEDs_tot
+        return ssp_stellar, ssp_nebular
 
     def set_all(self):
         """Reads ALL models found in path."""
 
-        metallicities, ages, SEDs_stellar, SEDs_nebular = [], [], [], []
+        metallicities, ages, ssps_stellar, ssps_nebular = [], [], [], []
         for fits_name in self.models_list:
             with fits.open(fits_name) as fits_object:
-                stellar, nebular = self.get_SSP(fits_object)
+                stellar, nebular = self.get_ssp(fits_object)
                 metallicities += [self.get_metallicities(fits_object)]
-                SEDs_stellar += [stellar]
-                SEDs_nebular += [nebular]
+                ssps_stellar += [stellar]
+                ssps_nebular += [nebular]
                 ages += [self.get_ages(fits_object)]
         if not all([all(ages[0] == ages_i) for ages_i in ages[1:]]):
             raise(ValueError, "not all models have same age sampling.")
 
-        self.metalicities = pd.Series(metallicities)
+        self.metallicities = pd.Series(metallicities)
         self.ages = ages[0]
         self.wavelength = stellar.index.values
-        self.SEDs_stellar = OrderedDict(zip(metallicities, SEDs_stellar))
-        self.SEDs_nebular = OrderedDict(zip(metallicities, SEDs_nebular))
+        self.ssps_stellar = OrderedDict(zip(metallicities, ssps_stellar))
+        self.ssps_nebular = OrderedDict(zip(metallicities, ssps_nebular))
 
         return None
 
 
 class iSSAG(object):
     """A Star Formation History (SFH) library generator with
-       parametric approach a la Chen+2012.
+       parametric approach a la Chen et al. (2012).
 
        Attributes:
            chen     The sampler used to draw SFH parameters.
@@ -313,27 +314,27 @@ class iSSAG(object):
         # read all models in default path
         self.models.set_all()
         # initial value for library
-        self.SFHs = None
+        self.sfhs = None
         # initial value for SEDs
-        self.SEDs_nebular = None
-        self.SEDs_stellar = None
+        self.seds_nebular = None
+        self.seds_stellar = None
 
     def get_extinction_curve(self, iloc, timescale):
         """Build extinction curve from Charlot & Fall (2001)."""
         wl = self.models.wavelength
-        tau_V = self.sample.tau_V[iloc]
-        mu_V = self.sample.mu_V[iloc]
+        tau_v = self.sample.tau_v[iloc]
+        mu_v = self.sample.mu_v[iloc]
         n_BC = np.count_nonzero(timescale < 1e7)
         n_ISM = timescale.size - n_BC
 
-        ext_BC = np.tile(np.exp(-tau_V*(wl/5500.0)**(-0.7)),
+        ext_BC = np.tile(np.exp(-tau_v*(wl/5500.0)**(-0.7)),
                          (n_BC, 1)).T
-        ext_ISM = np.tile(np.exp(-mu_V*tau_V*(wl/5500.0)**(-0.7)),
+        ext_ISM = np.tile(np.exp(-mu_v*tau_v*(wl/5500.0)**(-0.7)),
                           (n_ISM, 1)).T
 
         return np.column_stack((ext_BC, ext_ISM))
 
-    def get_kinematics(self, iloc, SED):
+    def get_kinematic_effects(self, iloc, sed):
         """Adds velocity dispersion to given SED.
            This method was adapted from GALAXEV routines
            (Bruzual & Charlot, 2003).
@@ -343,18 +344,18 @@ class iSSAG(object):
         nx = 100
         wl = self.models.wavelength
         nwl = wl.size + 2*nx
-        # LOSVD = self.sample.sigma_v[iloc]
-        LOSVD = 400.0
+        # losvd = self.sample.sigma_v[iloc]
+        losvd = 400.0
 
-        wl_, SED_ = np.zeros(nwl), np.zeros(nwl)
+        wl_, sed_ = np.zeros(nwl), np.zeros(nwl)
         wl_[:nx] = wl[0]
         wl_[nx:nwl-nx] = wl
         wl_[nwl-nx:] = wl[-1]
-        SED_[:nx] = SED[0]
-        SED_[nx:nwl-nx] = SED
-        SED_[nwl-nx:] = SED[-1]
+        sed_[:nx] = sed[0]
+        sed_[nx:nwl-nx] = sed
+        sed_[nwl-nx:] = sed[-1]
         for i in xrange(nwl):
-            wl_max = c_mks*wl_[i] / (c_mks-m*LOSVD)
+            wl_max = c_mks*wl_[i] / (c_mks-m*losvd)
             j = np.searchsorted(wl_, wl_max)
             m2 = j + 1
             m1 = 2 * i - m2
@@ -367,39 +368,39 @@ class iSSAG(object):
             u, g = [], []
             for j in xrange(m2-1, m1-1, -1):
                 u += [(wl_[i] / wl_[j]-1.0) * c_mks]
-                g += [SED_[j] * norm.pdf(u[-1], loc=0.0, scale=LOSVD)]
+                g += [sed_[j] * norm.pdf(u[-1], loc=0.0, scale=losvd)]
 
             if i >= nx+1 and i < nwl-nx:
-                SED_[i-nx] = np.trapz(g, x=u)
+                sed_[i-nx] = np.trapz(g, x=u)
 
-        return SED_[nx:-nx]
+        return sed_[nx:-nx]
 
     def get_metallicity_interpolation(self, iloc, emission="nebular"):
         """Interpolate models in metallicity."""
-        Z = self.models.metalicities.values.copy()
-        Z_new = self.sample.Z[iloc]
+        zs = self.models.metallicities.values.copy()
+        z_new = self.sample.metallicity[iloc]
         if emission == "nebular":
-            SSPs = (self.models.SEDs_nebular.copy(),)
+            ssps = (self.models.ssps_nebular.copy(),)
         elif emission == "stellar":
-            SSPs = (self.models.SEDs_stellar.copy(),)
+            ssps = (self.models.ssps_stellar.copy(),)
         elif emission == "both":
-            SSPs = (self.models.SEDs_nebular.copy(),
-                    self.models.SEDs_stellar.copy())
+            ssps = (self.models.ssps_nebular.copy(),
+                    self.models.ssps_stellar.copy())
         else:
             raise ValueError("Invalid model. Try: 'nebular', \
                               'stellar' or 'both'.")
-        SSPs_new = []
-        if Z_new not in Z:
-            for SSP in SSPs:
-                j = np.searchsorted(Z, Z_new)
-                Z_0, Z_1, Z_2 = np.log10([Z_new, Z[j-1], Z[j]])
-                v, w = (Z_2 - Z_0)/(Z_2 - Z_1), (Z_0 - Z_1)/(Z_2 - Z_1)
-                SSPs_new += [v * SSP.get(Z[j-1]) + w * SSP.get(Z[j])]
+        ssps_new = []
+        if z_new not in zs:
+            for ssp in ssps:
+                j = np.searchsorted(zs, z_new)
+                z_0, z_1, z_2 = np.log10([z_new, zs[j-1], zs[j]])
+                v, w = (z_2 - z_0)/(z_2 - z_1), (z_0 - z_1)/(z_2 - z_1)
+                ssps_new += [v * ssp.get(zs[j-1]) + w * ssp.get(zs[j])]
         else:
-            SSPs_new += [SSP.get(Z_new) for SSP in SSPs]
-        return SSPs_new
+            ssps_new += [ssp.get(z_new) for ssp in ssps]
+        return ssps_new
 
-    def get_time_interpolation(self, iloc, SSPs):
+    def get_time_interpolation(self, iloc, ssps):
         """Interpolate models in time."""
         # SSAG time parameters
         t_new = [self.sample.t_form[iloc],
@@ -408,7 +409,7 @@ class iSSAG(object):
         if self.sample.truncated[iloc]:
             t_new += [self.sample.t_trun[iloc]]
         for i in xrange(len(t_new)):
-            t = SSPs[0].columns.copy()
+            t = ssps[0].columns.copy()
             if t_new[i] not in t:
                 # find column j such that:
                 # t[j] < t_new[i] < t[j+1]
@@ -417,18 +418,18 @@ class iSSAG(object):
 
                 t_0, t_1, t_2 = np.log10([t_new[i], t[k-1], t[k]])
                 v, w = (t_2 - t_0)/(t_2 - t_1), (t_0 - t_1)/(t_2 - t_1)
-                for j in xrange(len(SSPs)):
-                    new_model = v * SSPs[j].get(t[k-1]) + w * SSPs[j].get(t[k])
-                    SSPs[j].insert(k, t_new[i], new_model)
-        return SSPs
+                for j in xrange(len(ssps)):
+                    new_model = v * ssps[j].get(t[k-1]) + w * ssps[j].get(t[k])
+                    ssps[j].insert(k, t_new[i], new_model)
+        return ssps
 
-    def get_SFH(self, iloc, timescale):
+    def get_sfh(self, iloc, timescale):
         """Build SFH from iloc galaxy in the sample."""
         t_form = self.sample.t_form[iloc]
         gamma = self.sample.gamma[iloc]
         t_burst_i = self.sample.t_burst[iloc]
         t_burst_f = t_burst_i - self.sample.t_ext[iloc]
-        A = self.sample.A[iloc]
+        a_burst = self.sample.a_burst[iloc]
         t_trun = self.sample.t_trun[iloc]
         tau_trun = self.sample.tau_trun[iloc]
 
@@ -458,58 +459,58 @@ class iSSAG(object):
         mask_burst[t_burst_i < timescale] = False
         mass_under = np.trapz(SFH_cont+SFH_trun, timescale)
         SFH_burst = np.zeros(timescale.size)
-        SFH_burst[mask_burst] = mass_under * A / (t_burst_i - t_burst_f)
+        SFH_burst[mask_burst] = mass_under * a_burst / (t_burst_i - t_burst_f)
 
         SFH = pd.Series(SFH_cont+SFH_trun+SFH_burst, timescale, name=iloc)
 
         return SFH
 
-    def set_all_SFHs(self):
+    def set_all_sfhs(self):
         """Build SFH library."""
-        SFHs = OrderedDict()
+        sfhs = OrderedDict()
         for i in self.sample.index:
-            SSPs = self.get_metallicity_interpolation(i)
-            SSPs = self.get_time_interpolation(i, SSPs)
+            ssps = self.get_metallicity_interpolation(i)
+            ssps = self.get_time_interpolation(i, ssps)
 
-            SFHs[i] = self.get_SFH(i, SSPs[0].columns)
+            sfhs[i] = self.get_sfh(i, ssps[0].columns)
 
-        self.SFHs = SFHs
+        self.sfhs = sfhs
 
         return None
 
-    def set_all_SEDs(self, emission="nebular"):
+    def set_all_seds(self, emission="nebular"):
         """Build both: the SED and the SFHs."""
-        SFHs = OrderedDict()
-        SEDs = []
+        sfhs = OrderedDict()
+        seds = []
         columns = self.sample.index
         for i in columns:
-            SSPs = self.get_metallicity_interpolation(i, emission=emission)
-            SSPs = self.get_time_interpolation(i, SSPs)
-            SFHs[i] = self.get_SFH(i, SSPs[0].columns)
+            ssps = self.get_metallicity_interpolation(i, emission=emission)
+            ssps = self.get_time_interpolation(i, ssps)
+            sfhs[i] = self.get_sfh(i, ssps[0].columns)
 
-            for j in xrange(len(SSPs)):
-                SSPs[j] *= self.get_extinction_curve(i, SSPs[j].columns)
+            for j in xrange(len(ssps)):
+                ssps[j] *= self.get_extinction_curve(i, ssps[j].columns)
 
-                SEDs += [np.average(SSPs[j].values,
-                                    weights=np.tile(SFHs[i],
-                                                    (SSPs[j].index.size, 1)),
+                seds += [np.average(ssps[j].values,
+                                    weights=np.tile(sfhs[i],
+                                                    (ssps[j].index.size, 1)),
                                     axis=1)]
-                # SEDs[-1] = self.get_kinematics(i, SEDs[-1])
+                # seds[-1] = self.get_kinematic_effects(i, seds[-1])
 
-        self.SFHs = SFHs
+        self.sfhs = sfhs
         if emission == "both":
-            self.SEDs_nebular = pd.DataFrame(np.array(SEDs[::2]).T,
+            self.seds_nebular = pd.DataFrame(np.array(seds[::2]).T,
                                              index=self.models.wavelength,
                                              columns=columns)
-            self.SEDs_stellar = pd.DataFrame(np.array(SEDs[1::2]).T,
+            self.seds_stellar = pd.DataFrame(np.array(seds[1::2]).T,
                                              index=self.models.wavelength,
                                              columns=columns)
         elif emission == "nebular":
-            self.SEDs_nebular = pd.DataFrame(np.array(SEDs).T,
+            self.seds_nebular = pd.DataFrame(np.array(seds).T,
                                              index=self.models.wavelength,
                                              columns=columns)
         elif emission == "stellar":
-            self.SEDs_stellar = pd.DataFrame(np.array(SEDs).T,
+            self.seds_stellar = pd.DataFrame(np.array(seds).T,
                                              index=self.models.wavelength,
                                              columns=columns)
         return None
