@@ -427,6 +427,21 @@ class iSSAG(object):
                     ssps[j].insert(k, t_new[i], new_model)
         return ssps
 
+    # def get_physical_properties(self, iloc, ssps):
+    #     if self.sfhs is None:
+    #         raise ValueError("You must build the SFHs first.")
+    #     if self.seds is None:
+    #         raise ValueError("You must build the SEDs first.")
+    #
+    #     sfh = self.sfhs.get(iloc).values
+    #     timescale = sfh.index.values
+    #     delta_t = np.diff(np.concatenate(([0.0], timescale)))
+    #
+    #     mass_bins = sfh * delta_t
+    #
+    #     stellar_mass = sum(mass_bins)
+    #     sfr_10myr = mean(sfh[timescale <= 1e7])
+
     def get_sfh(self, iloc, timescale):
         """Build SFH from iloc galaxy in the sample."""
         t_form = self.sample.t_form[iloc]
