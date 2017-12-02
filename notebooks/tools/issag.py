@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 from scipy.stats import norm
 from collections import OrderedDict
+from tools.Photometry import integrated_flux as iflux
 from astropy.io import fits
 from fnmatch import fnmatch
 
@@ -315,8 +316,11 @@ class iSSAG(object):
         self.sample = self.chen.get_samples(size)
         # initialize models loader
         self.models = Models(path=path)
+        # read all filters
+        filter_responses = pd.read_csv("../data/filters.csv")
         # read all models in default path
         self.models.set_all()
+        
         # initial value for library
         self.sfhs = None
         # initial value for SEDs
@@ -427,20 +431,31 @@ class iSSAG(object):
                     ssps[j].insert(k, t_new[i], new_model)
         return ssps
 
-    # def get_physical_properties(self, iloc, ssps):
-    #     if self.sfhs is None:
-    #         raise ValueError("You must build the SFHs first.")
-    #     if self.seds is None:
-    #         raise ValueError("You must build the SEDs first.")
-    #
-    #     sfh = self.sfhs.get(iloc).values
-    #     timescale = sfh.index.values
-    #     delta_t = np.diff(np.concatenate(([0.0], timescale)))
-    #
-    #     mass_bins = sfh * delta_t
-    #
-    #     stellar_mass = sum(mass_bins)
-    #     sfr_10myr = mean(sfh[timescale <= 1e7])
+    def get_physical_properties(self, iloc, sfh, ssps, passband=("SDSS", "r")):
+        sfh = self.sfhs[iloc].values
+        timescale = ssps[0].columns.values
+        delta_t = np.diff(np.concatenate(([0.0], timescale)))
+        
+        sdss_r_id = filter_responses.groupby(("survey", "filter_name")).get(passband).values
+        sdss_r = filter_responses.iloc[sdss_r_id].get(("wavelength", "response")).values
+        l = np.array([iflux(np.column_stack((spss[1].index, ssps[1].iloc[:,j])), sdss_r)])
+        
+        mass_bins = sfh * delta_t
+    
+        physical = OrderedDict(
+            stellar_mass = np.sum(mass_bins)
+            sfr_10myr = np.average(sfh[timescale <= 1e7])
+            logt_l = np.average(np.log10(timescale), weights=l*mass_bins)
+            logt_m = np.average(np.log10(timescale), weights=mass_bins)
+            logz_l = np.log10(self.sample.metallicity[iloc])
+            logz_m = np.log10(self.sample.metallicity[iloc])
+            av_eff = 1.086*self.sample.tau_v[iloc]*self.sample.mu_v[iloc]
+            sigma_v = self.sample.sigma_v[iloc]
+        )
+        
+        physical = pd.DataFrame(physical, index=(iloc,))
+        
+        return physical
 
     def get_sfh(self, iloc, timescale):
         """Build SFH from iloc galaxy in the sample."""
@@ -518,7 +533,13 @@ class iSSAG(object):
                                     weights=np.tile(mass_bins, (wl.size, 1)),
                                     axis=1)]
                 # seds[-1] = self.get_kinematic_effects(i, seds[-1])
-
+            if self.physical is None:
+                self.physical = self.get_physical_properties(i, sfhs[i], ssps)
+            else:
+                self.physical = self.physical.append(
+                    self.get_physical_properties(i, sfhs[i], ssps),
+                    ignore_index=True
+                )
         self.sfhs = sfhs
         if emission == "both":
             self.seds_nebular = pd.DataFrame(np.array(seds[::2]).T,
