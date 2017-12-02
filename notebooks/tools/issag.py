@@ -11,11 +11,15 @@ from collections import OrderedDict
 from tools.Photometry import integrated_flux as iflux
 from astropy.io import fits
 from fnmatch import fnmatch
+from astropy import cosmology
+import astropy.units as u
 
+UNIVERSE = cosmology.FlatLambdaCDM(H0=70 * u.km / u.s / u.Mpc, Tcmb0=2.725 * u.K, Om0=0.3)
+UNIVERSE_AGE = universe.age(0.0).to(u.yr).value
+FIRST_GAL_AGE = UNIVERSE_AGE - 1e6
 
 def _random_range_(domain):
     return domain[0] + np.random.rand() * (domain[1] - domain[0])
-
 
 def _rejection_(pdf, domain, top, size=1):
     N = 0
@@ -34,17 +38,18 @@ def _rejection_(pdf, domain, top, size=1):
 
 class Sampler(object):
 
-    def __init__(self, domain_t_form=(1.5e9, 13.7e9),
+    def __init__(self, domain_t_form=(1.5e9, FIRST_GAL_AGE),
                  domain_gamma=(0.0, 1.0),
-                 domain_t_trun=(1e6, 13.7e9),
+                 domain_t_trun=(1e6, FIRST_GAL_AGE),
                  log_domain_tau_trun=(7.0, 9.0),
                  domain_t_ext=(3e7, 3e8),
-                 domain_t_burst=(1e6, 13.7e9),
+                 domain_t_burst=(1e6, FIRST_GAL_AGE),
                  domain_a_burst=(0.03, 4.0),
                  domain_z=(0.005, 2.5),
                  domain_tau_v=(0.0, 6.0),
                  domain_mu_v=(0.0, 1.0),
-                 domain_sigma_v=(50.0, 400.0)):
+                 domain_sigma_v=(50.0, 400.0),
+                 domain_redshift=(0.0, 1000.0)):
         self.domain_t_form = domain_t_form
         self.domain_gamma = domain_gamma
         self.domain_t_trun = domain_t_trun
@@ -56,6 +61,7 @@ class Sampler(object):
         self.domain_tau_v = domain_tau_v
         self.domain_mu_v = domain_mu_v
         self.domain_sigma_v = domain_sigma_v
+        self.domain_redshift = domain_redshift
 
         self.t_form = None
         self.gamma = None
@@ -88,6 +94,7 @@ class Sampler(object):
         self.tau_v = None
         self.mu_v = None
         self.sigma_v = None
+        self.redshift = None
         return None
 
     def draw_t_form(self):
@@ -190,12 +197,21 @@ class Sampler(object):
         self.sigma_v = _random_range_(self.domain_sigma_v)
         return self.sigma_v
 
+    def draw_redshift(self):
+        if self.t_form is None:
+            self.draw_t_form()
+            
+        maximum_redshift = cosmology.z_at_value(UNIVERSE.age, UNIVERSE_AGE-self.t_form)
+        domain_redshift = (self.domain_redshift[0], maximum_redshift)
+        self.redshift = _random_range_(domain_redshift)
+        return self.redshift
+
     def get_samples(self, size=1, pristine=False):
         self._clean_draws_()
 
         columns = ["t_form", "gamma", "truncated", "t_trun", "tau_trun",
                    "t_burst", "t_ext", "a_burst", "metallicity", "tau_v",
-                   "mu_v", "sigma_v"]
+                   "mu_v", "sigma_v", "redshift"]
         sample = OrderedDict([(kw, []) for kw in columns])
         for i in xrange(size):
             sample["t_form"] += [self.draw_t_form()]
@@ -210,6 +226,7 @@ class Sampler(object):
             sample["tau_v"] += [self.draw_tau_v()]
             sample["mu_v"] += [self.draw_mu_v()]
             sample["sigma_v"] += [self.draw_sigma_v()]
+            sample["redshift"] += [self.draw_redshift()]
             self._clean_draws_()
         if pristine or self.sample is None:
             self.sample = pd.DataFrame(sample, columns=columns)
@@ -499,7 +516,7 @@ class iSSAG(object):
         SFH = pd.Series(SFH_cont+SFH_trun+SFH_burst, timescale, name=iloc)
 
         return SFH
-
+    
     def set_all_sfhs(self):
         """Build SFH library."""
         sfhs = OrderedDict()
@@ -514,8 +531,8 @@ class iSSAG(object):
 
         return None
 
-    def set_all_seds(self, emission="nebular"):
-        """Build both: the SED and the SFHs."""
+    def set_all_seds(self, emission="nebular", set_redshift=False):
+        """Build both: the SFHs and the SEDs."""
         sfhs = OrderedDict()
         seds = []
         columns = self.sample.index
