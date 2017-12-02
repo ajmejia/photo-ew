@@ -14,12 +14,16 @@ from fnmatch import fnmatch
 from astropy import cosmology
 import astropy.units as u
 
-UNIVERSE = cosmology.FlatLambdaCDM(H0=70 * u.km / u.s / u.Mpc, Tcmb0=2.725 * u.K, Om0=0.3)
-UNIVERSE_AGE = universe.age(0.0).to(u.yr).value
+
+UNIVERSE = cosmology.FlatLambdaCDM(H0=70 * u.km / u.s / u.Mpc,
+                                   Tcmb0=2.725 * u.K, Om0=0.3)
+UNIVERSE_AGE = UNIVERSE.age(0.0).to(u.yr).value
 FIRST_GAL_AGE = UNIVERSE_AGE - 1e6
+
 
 def _random_range_(domain):
     return domain[0] + np.random.rand() * (domain[1] - domain[0])
+
 
 def _rejection_(pdf, domain, top, size=1):
     N = 0
@@ -200,8 +204,11 @@ class Sampler(object):
     def draw_redshift(self):
         if self.t_form is None:
             self.draw_t_form()
-            
-        maximum_redshift = cosmology.z_at_value(UNIVERSE.age, UNIVERSE_AGE-self.t_form)
+
+        maximum_redshift = cosmology.z_at_value(
+            UNIVERSE.age, (UNIVERSE_AGE-self.t_form)*u.yr
+        )
+        maximum_redshift = min(maximum_redshift, 3.0)
         domain_redshift = (self.domain_redshift[0], maximum_redshift)
         self.redshift = _random_range_(domain_redshift)
         return self.redshift
@@ -334,15 +341,17 @@ class iSSAG(object):
         # initialize models loader
         self.models = Models(path=path)
         # read all filters
-        filter_responses = pd.read_csv("../data/filters.csv")
+        self.filter_responses = pd.read_csv("../data/filters.csv")
         # read all models in default path
         self.models.set_all()
-        
+
         # initial value for library
         self.sfhs = None
         # initial value for SEDs
         self.seds_nebular = None
         self.seds_stellar = None
+        # initial value for physical
+        self.physical = None
 
     def get_extinction_curve(self, iloc, timescale):
         """Build extinction curve from Charlot & Fall (2001)."""
@@ -449,29 +458,34 @@ class iSSAG(object):
         return ssps
 
     def get_physical_properties(self, iloc, sfh, ssps, passband=("SDSS", "r")):
-        sfh = self.sfhs[iloc].values
         timescale = ssps[0].columns.values
         delta_t = np.diff(np.concatenate(([0.0], timescale)))
-        
-        sdss_r_id = filter_responses.groupby(("survey", "filter_name")).get(passband).values
-        sdss_r = filter_responses.iloc[sdss_r_id].get(("wavelength", "response")).values
-        l = np.array([iflux(np.column_stack((spss[1].index, ssps[1].iloc[:,j])), sdss_r)])
-        
-        mass_bins = sfh * delta_t
-    
-        physical = OrderedDict(
-            stellar_mass = np.sum(mass_bins)
-            sfr_10myr = np.average(sfh[timescale <= 1e7])
-            logt_l = np.average(np.log10(timescale), weights=l*mass_bins)
-            logt_m = np.average(np.log10(timescale), weights=mass_bins)
-            logz_l = np.log10(self.sample.metallicity[iloc])
-            logz_m = np.log10(self.sample.metallicity[iloc])
-            av_eff = 1.086*self.sample.tau_v[iloc]*self.sample.mu_v[iloc]
-            sigma_v = self.sample.sigma_v[iloc]
+
+        sdss_r_id = self.filter_responses.groupby(
+            ("survey", "filter")
+        ).groups.get(passband).values
+        sdss_r = self.filter_responses.iloc[sdss_r_id].get(
+            ["wavelength", "response"]).values
+        lum = np.array([iflux(np.column_stack(
+            (ssps[1].index, ssps[1].iloc[:, j])), sdss_r)
+            for j in xrange(ssps[1].columns.size)]
         )
-        
+
+        mass_bins = sfh * delta_t
+
+        physical = OrderedDict(
+            stellar_mass=np.sum(mass_bins),
+            sfr_10myr=np.average(sfh[timescale <= 1e7]),
+            logt_l=np.average(np.log10(timescale), weights=lum*mass_bins),
+            logt_m=np.average(np.log10(timescale), weights=mass_bins),
+            logz_l=np.log10(self.sample.metallicity[iloc]),
+            logz_m=np.log10(self.sample.metallicity[iloc]),
+            av_eff=1.086*self.sample.tau_v[iloc]*self.sample.mu_v[iloc],
+            sigma_v=self.sample.sigma_v[iloc]
+        )
+
         physical = pd.DataFrame(physical, index=(iloc,))
-        
+
         return physical
 
     def get_sfh(self, iloc, timescale):
@@ -516,7 +530,7 @@ class iSSAG(object):
         SFH = pd.Series(SFH_cont+SFH_trun+SFH_burst, timescale, name=iloc)
 
         return SFH
-    
+
     def set_all_sfhs(self):
         """Build SFH library."""
         sfhs = OrderedDict()
