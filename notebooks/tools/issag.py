@@ -445,17 +445,21 @@ class iSSAG(object):
         for i in xrange(len(t_new)):
             t = ssps[0].columns.copy()
             if t_new[i] not in t:
-                # find column j such that:
-                # t[j] < t_new[i] < t[j+1]
+                # find column k such that:
+                # t[k-1] < t_new[i] < t[k]
                 k = np.searchsorted(t, t_new[i])
                 # interpolate in models (k-1, k) assuming linearity in log-ages
 
                 t_0, t_1, t_2 = np.log10([t_new[i], t[k-1], t[k]])
                 v, w = (t_2 - t_0)/(t_2 - t_1), (t_0 - t_1)/(t_2 - t_1)
                 for j in xrange(len(ssps)):
-                    new_model = v * ssps[j].get(t[k-1]) + w * ssps[j].get(t[k])
-                    ssps[j].insert(k, t_new[i], new_model)
-        return ssps
+                    ssps[j].insert(k, t_new[i],
+                                   v*ssps[j].get(t[k-1]) +
+                                   w*ssps[j].get(t[k]))
+
+        # return models dropping the older than galaxy ones
+        return [ssps[j].drop(columns=t[t > t_new[0]])
+                for j in xrange(len(ssps))]
 
     def get_physical_properties(self, iloc, sfh, ssps, passband=("SDSS", "r")):
         timescale = ssps[0].columns.values
@@ -474,8 +478,8 @@ class iSSAG(object):
         mass_bins = sfh * delta_t
 
         physical = OrderedDict(
-            stellar_mass=np.sum(mass_bins),
-            sfr_10myr=np.average(sfh[timescale <= 1e7]),
+            log_stellar_mass=np.log10(np.sum(mass_bins)),
+            log_sfr_10myr=np.average(np.log10(sfh[timescale <= 1e7])),
             logt_l=np.average(np.log10(timescale), weights=lum*mass_bins),
             logt_m=np.average(np.log10(timescale), weights=mass_bins),
             logz_l=np.log10(self.sample.metallicity[iloc]),
@@ -537,9 +541,7 @@ class iSSAG(object):
         for i in self.sample.index:
             ssps = self.get_metallicity_interpolation(i)
             ssps = self.get_time_interpolation(i, ssps)
-            timescale = ssps[0].columns
-
-            sfhs[i] = self.get_sfh(i, timescale)
+            sfhs[i] = self.get_sfh(i, ssps[0].columns)
 
         self.sfhs = sfhs
 
@@ -554,8 +556,8 @@ class iSSAG(object):
         for i in columns:
             ssps = self.get_metallicity_interpolation(i, emission=emission)
             ssps = self.get_time_interpolation(i, ssps)
-            timescale = ssps[0].columns
-            sfhs[i] = self.get_sfh(i, timescale)
+            sfhs[i] = self.get_sfh(i, ssps[0].columns)
+            timescale = sfhs[i].index.values
             delta_t = np.diff(np.concatenate(([0.0], timescale)))
             for j in xrange(len(ssps)):
                 ssps[j] *= self.get_extinction_curve(i, timescale)
