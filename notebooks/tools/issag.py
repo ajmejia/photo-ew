@@ -1,4 +1,5 @@
 # Idea original from Ivan Cabrera-Ziri (~2014)
+# Implementation by Alfredo Mejia-Narvaez (2017)
 # This code will compute the SSAG SFHs
 #
 
@@ -163,10 +164,10 @@ class Sampler(object):
         if self.t_ext is None:
             self.draw_t_ext()
 
-        # tol_t_burst = 0.10 if self.truncated else 0.15
+        tol_t_burst = 0.10 if self.truncated else 0.15
         if self.t_form >= 2e9:
             domain_t_burst = (self.domain_t_burst[0]+self.t_ext, 2e9)\
-                if np.random.rand() < 0.1 else\
+                if np.random.rand() < tol_t_burst else\
                 (2e9, self.t_form)
         else:
             domain_t_burst = (self.domain_t_burst[0]+self.t_ext, self.t_form)
@@ -508,29 +509,38 @@ class iSSAG(object):
                                                    t_trun] if pd.notna(time)]):
             raise ValueError("You need to interpolate in time first.")
 
-        # build truncation (SFH_trun) and main SFH (SFH_cont)
         mask_cont = np.ones(timescale.size, dtype=np.bool)
+        # mask ages older than galaxy
         mask_cont[timescale > t_form] = False
-        mask_cont[(t_burst_f < timescale) & (timescale < t_burst_i)] = False
         SFH_trun = np.zeros(timescale.size)
         if self.sample.truncated[iloc]:
+            # mask ages younger than truncation time
             mask_cont[timescale <= t_trun] = False
+            # mask ages older than truncation time in truncated SFH
             mask_trun = np.ones(timescale.size, dtype=np.bool)
             mask_trun[timescale > t_trun] = False
+            # build truncation (SFH_trun)
             SFH_trun[mask_trun] = np.exp(-(t_trun - timescale[mask_trun]) /
                                          tau_trun)
             SFH_trun[mask_trun] *= np.exp(-(t_form - t_trun) * gamma*1e-9)
         SFH_cont = np.zeros(timescale.size)
+        # build main SFH (SFH_cont)
         SFH_cont[mask_cont] = np.exp(-(t_form - timescale[mask_cont]) *
                                      gamma*1e-9)
-        # build burst (SFH_burst)
-        mask_burst = np.ones(timescale.size, dtype=np.bool)
-        mask_burst[timescale <= t_burst_f] = False
-        mask_burst[timescale >= t_burst_i] = False
+        # compute mass without burst
         mass_under = np.trapz(SFH_cont+SFH_trun, x=timescale)
+        # maskout burst times from underlying SFH
+        mask_cont[(t_burst_f <= timescale) & (timescale <= t_burst_i)] = False
+        SFH_cont[~mask_cont] = 0.0
+        mask_burst = np.ones(timescale.size, dtype=np.bool)
+        # mask ages older/younger than burst interval
+        mask_burst[timescale < t_burst_f] = False
+        mask_burst[timescale > t_burst_i] = False
         SFH_burst = np.zeros(timescale.size)
+        # build burst (SFH_burst)
         SFH_burst[mask_burst] = mass_under * a_burst / (t_burst_i - t_burst_f)
 
+        # build full SFH
         SFH = pd.Series(SFH_cont+SFH_trun+SFH_burst, timescale, name=iloc)
 
         return SFH
