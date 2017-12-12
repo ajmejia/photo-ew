@@ -478,16 +478,18 @@ class iSSAG(object):
 
         mass_bins = sfh * delta_t
 
-        physical = OrderedDict(
-            log_stellar_mass=np.log10(np.sum(mass_bins)),
-            log_sfr_10myr=np.average(np.log10(sfh[timescale <= 1e7])),
-            logt_l=np.average(np.log10(timescale), weights=lum*mass_bins),
-            logt_m=np.average(np.log10(timescale), weights=mass_bins),
-            logz_l=np.log10(self.sample.metallicity[iloc]),
-            logz_m=np.log10(self.sample.metallicity[iloc]),
-            av_eff=1.086*self.sample.tau_v[iloc]*self.sample.mu_v[iloc],
-            sigma_v=self.sample.sigma_v[iloc]
-        )
+        physical = OrderedDict()
+        physical["log_stellar_mass"] = np.log10(mass_bins.sum())
+        physical["log_ssfr_10myr"] = np.log10(mass_bins[timescale <= 1e7].sum()
+                                              / 1e7 / mass_bins.sum())
+        physical["logt_l"] = np.average(np.log10(timescale),
+                                        weights=lum*mass_bins)
+        physical["logt_m"] = np.average(np.log10(timescale), weights=mass_bins)
+        physical["logz_l"] = np.log10(self.sample.metallicity[iloc])
+        physical["logz_m"] = np.log10(self.sample.metallicity[iloc])
+        physical["av_eff"] = 1.086*self.sample.tau_v[iloc] *\
+            self.sample.mu_v[iloc]
+        physical["sigma_v"] = self.sample.sigma_v[iloc]
 
         physical = pd.DataFrame(physical, index=(iloc,))
 
@@ -557,7 +559,7 @@ class iSSAG(object):
 
         return None
 
-    def set_all_seds(self, emission="nebular", set_redshift=False):
+    def set_all_seds(self, emission="nebular"):
         """Build both: the SFHs and the SEDs."""
         sfhs = OrderedDict()
         seds = []
