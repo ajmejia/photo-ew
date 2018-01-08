@@ -359,28 +359,23 @@ class iSSAG(object):
         wl = self.models.wavelength
         tau_v = self.sample.tau_v[iloc]
         mu_v = self.sample.mu_v[iloc]
-        n_BC = np.count_nonzero(timescale < 1e7)
-        n_ISM = timescale.size - n_BC
+        n_bc = np.count_nonzero(timescale < 1e7)
+        n_ism = timescale.size - n_bc
 
-        ext_BC = np.tile(np.exp(-tau_v*(wl/5500.0)**(-0.7)),
-                         (n_BC, 1)).T
-        ext_ISM = np.tile(np.exp(-mu_v*tau_v*(wl/5500.0)**(-0.7)),
-                          (n_ISM, 1)).T
+        ext_bc = np.tile(np.exp(-tau_v*(wl/5500.0)**(-0.7)),
+                         (n_bc, 1)).T
+        ext_ism = np.tile(np.exp(-mu_v*tau_v*(wl/5500.0)**(-0.7)),
+                          (n_ism, 1)).T
 
-        return np.column_stack((ext_BC, ext_ISM))
+        return np.column_stack((ext_bc, ext_ism))
 
     def get_kinematic_effects(self, iloc, sed):
-        """Adds velocity dispersion to given SED.
-           This method was adapted from GALAXEV routines
-           (Bruzual & Charlot, 2003).
-           """
         c_mks = 3e5
         m = 6.0
         nx = 100
         wl = self.models.wavelength
         nwl = wl.size + 2*nx
-        # losvd = self.sample.sigma_v[iloc]
-        losvd = 400.0
+        losvd = self.sample.sigma_v[iloc]
 
         wl_, sed_ = np.zeros(nwl), np.zeros(nwl)
         wl_[:nx] = wl[0]
@@ -392,21 +387,16 @@ class iSSAG(object):
         for i in xrange(nwl):
             wl_max = c_mks*wl_[i] / (c_mks-m*losvd)
             j = np.searchsorted(wl_, wl_max)
-            m2 = j + 1
-            m1 = 2 * i - m2
+            m2 = np.min([j+1, nwl-1])
+            m1 = np.max([0, 2*i-m2])
 
-            if m1 < 0:
-                m1 = 0
-            if m2 > nwl:
-                m2 = nwl
+            u = (wl_[i] / wl_[m2:m1:-1] - 1.0) * c_mks
+            g = norm.pdf(u, loc=0.0, scale=losvd)
+            w = np.trapz(g, u)
+            g = sed_[m2:m1:-1] * g / (w if w > 0.0 else 1.0)
 
-            u, g = [], []
-            for j in xrange(m2-1, m1-1, -1):
-                u += [(wl_[i] / wl_[j]-1.0) * c_mks]
-                g += [sed_[j] * norm.pdf(u[-1], loc=0.0, scale=losvd)]
-
-            if i >= nx+1 and i < nwl-nx:
-                sed_[i-nx] = np.trapz(g, x=u)
+            if i >= nx and i < nwl-nx:
+                sed_[i] = np.trapz(g, x=u)
 
         return sed_[nx:-nx]
 
@@ -577,7 +567,7 @@ class iSSAG(object):
                 seds += [np.average(ssps[j].values,
                                     weights=np.tile(mass_bins, (wl.size, 1)),
                                     axis=1)]
-                # seds[-1] = self.get_kinematic_effects(i, seds[-1])
+                seds[-1] = self.get_kinematic_effects(i, seds[-1])
             if self.physical is None:
                 self.physical = self.get_physical_properties(i, sfhs[i], ssps)
             else:
