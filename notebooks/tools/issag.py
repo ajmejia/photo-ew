@@ -202,16 +202,23 @@ class Sampler(object):
         self.sigma_v = _random_range_(self.domain_sigma_v)
         return self.sigma_v
 
-    def draw_redshift(self):
+    def draw_redshift(self, get_max_redshift=True, max_survey=3.0):
         if self.t_form is None:
             self.draw_t_form()
 
         maximum_redshift = cosmology.z_at_value(
             UNIVERSE.age, (UNIVERSE_AGE-self.t_form)*u.yr
         )
-        maximum_redshift = min(maximum_redshift, 3.0)
-        domain_redshift = (self.domain_redshift[0], maximum_redshift)
-        self.redshift = _random_range_(domain_redshift)
+        if get_max_redshift:
+            if max_survey is None or max_survey > maximum_redshift:
+                self.redshift = maximum_redshift
+            else:
+                self.redshift = max_survey
+        else:
+            if max_survey is not None:
+                maximum_redshift = min(maximum_redshift, max_survey)
+            domain_redshift = (self.domain_redshift[0], maximum_redshift)
+            self.redshift = _random_range_(domain_redshift)
         return self.redshift
 
     def get_samples(self, size=1, pristine=False):
