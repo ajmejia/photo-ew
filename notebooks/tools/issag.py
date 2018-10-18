@@ -477,7 +477,7 @@ class iSSAG(object):
 
         physical = OrderedDict()
         physical["log_stellar_mass"] = np.log10(mass_bins.sum())
-        physical["log_ssfr_10myr"] = np.log10(mass_bins[timescale <= 1e7].sum()
+        physical["log_ssfr_10myr"] = np.log10(mass_bins[timescale <= 1e7].mean()
                                               / 1e7 / mass_bins.sum())
         physical["logt_l"] = np.average(np.log10(timescale),
                                         weights=lum*mass_bins)
